@@ -27,7 +27,7 @@ import time
 RESULTS = "hpo_results.csv"
 
 # 1本あたりの実測時間(秒)。フル5-fold・7スレッド。見積もりに使う。
-RUNTIME = {"lgbm": 250, "xgb": 650, "catboost": 4000}
+RUNTIME = {"lgbm": 250, "xgb": 650, "catboost": 1500}   # catboost は本番設定(iters=1000+fast)の実測。depth を上げる試行は 1.5〜2倍かかる
 
 # 各モデルの現行ベスト(比較の基準)。07_compare_oof.py に渡す OOF 名も兼ねる。
 BASELINE = {"lgbm": 0.946095, "xgb": 0.946077, "catboost": 0.94589, "realmlp": 0.945888}
