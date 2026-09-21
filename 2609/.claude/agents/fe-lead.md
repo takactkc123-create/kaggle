@@ -32,7 +32,7 @@ model: sonnet
 1. `CLAUDE.md` — 全体方針・データ特性・採否基準・競争ルール
 2. `Log.md` — **特に「Feature Engineering 検証結果」表と「打ち止めが確認済みのもの」**。
    再検証不要な施策がリスト化されています
-3. `reference_URL.md` — 上位公開カーネルの調査結果
+3. 上位公開カーネルの調査結果(ローカルの `docs/reference_URL.md`。リポジトリには含まれない)
 4. `03_fe_lgbm.py` / `03_fe_xgb.py` / `03_fe_catboost.py` / `03_fe_realmlp.py` — 集約対象
 
 ## 使命1: 03_fe_all.py への集約
