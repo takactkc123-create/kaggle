@@ -10,6 +10,8 @@ EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二�
 
 ## プロセス全体像
 
+![パイプライン全体像](docs/pipeline_overview.png)
+
 ```
 ① EDA → ② Baseline → ③ FE定義 → ④ FE実行 → ⑤ HPO → ⑥ Ensemble → submit
                                       ↓                    ↓
@@ -28,7 +30,6 @@ EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二�
 | ⑥ | Ensemble | `src/06_ensemble_hillclimb.py` | `submit/submission_hillclimb.csv` |
 | ⑦ | 評価 | `src/07_compare_oof.py` | 採否判定(paired DeLong 検定) |
 | — | Agents | `.claude/agents/*.md` | `docs/fe_results_*.md` |
-| — | 検証ハーネス | `tools/crosstest_*.py` | (本番には関与しない) |
 
 ---
 
@@ -85,7 +86,7 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 | XGBoost | `src/03_fe_xgb.py` | `src/04_fe_run_xgb.py` |
 | CatBoost | `src/03_fe_catboost.py` | `src/04_fe_run_catboost.py` |
 | RealMLP | `src/03_fe_realmlp.py` | `src/04_fe_run_realmlp.py` |
-| (横断) | `src/03_fe_all.py`(全モデルのFEを集約したカタログ) | `tools/crosstest_gbdt.py` |
+| (横断) | `src/03_fe_all.py`(全モデルのFEを集約したカタログ) | — |
 
 **効いたもの**
 - **厳密値 Target Encoding**(各モデル +0.003 前後、最大の改善要因)。数値列もビン分割せず値のままキーにする
@@ -98,17 +99,7 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 各施策の詳細(なぜ試したか / 期待した効果 / 結果の考察)は `docs/fe_results_*.md` を参照。
 
 > `src/03_fe_<model>.py` は**関数の定義のみ**、`src/04_fe_run_<model>.py` が**実行**という分担。
-> この分離により、同じ関数を別のハーネス(`tools/`)からも再利用できる。
-
-### 横展開の検証(本番には関与しない)
-
-```bash
-uv run tools/crosstest_gbdt.py --model lgbm --folds 2 --catify
-```
-
-「あるモデルで効いた FE が他のモデルでも効くか」を、**実装差を排除した同一条件**で比較するための
-ハーネス。`src/03_fe_all.py`(集約カタログ)だけを使う。各モデルの公式スコアとは絶対値がずれるため、
-**同じハーネス内での差分だけ**を判断材料にする。成果物は本番の候補プールに入れない。
+> この分離により、同じ関数を別の検証スクリプトからも再利用できる。
 
 ## ⑤ HPO
 
@@ -258,7 +249,6 @@ Jupyter で開く際は、カーネルに **`Python (kaggle 2609)`**(または `
 
 ```
 src/                   # 本番パイプライン(EDA / baseline / FE / HPO / ensemble / 評価)
-tools/                 # 検証用のハーネス。本番のスコアには関与しない
 notebooks/             # 工程を追える Notebook
 docs/                  # 各担当の検証記録、参考カーネルの調査結果
 data/                  # train.csv / test.csv / sample_submission.csv(Git 管理外)
