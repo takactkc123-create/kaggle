@@ -1,0 +1,21 @@
+# データ(Kaggle からダウンロードするもの)
+data/
+
+# 実行成果物(再現可能なため追跡しない)
+oof/
+submit/
+importance/
+datacheck/
+catboost_info/
+experiments_rejected/
+backup_*/
+kernels/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Kaggle カーネルの実行成果物(再現可能なので追跡しない。スクリプトと metadata は追跡する)
+kaggle_kernel_*/output/
+*.log

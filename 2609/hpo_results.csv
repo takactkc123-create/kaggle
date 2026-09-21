@@ -1,0 +1,7 @@
+日時,モデル,軸,試行名,OOF_AUC,基準との差,秒,引数
+2026-09-21 13:59,lgbm,num_leaves,lgbm_hpo_nl15,0.946070,-0.000025,334,--num_leaves 15
+2026-09-21 14:05,lgbm,num_leaves,lgbm_hpo_nl63,0.946100,+0.000005,339,--num_leaves 63
+2026-09-21 14:12,lgbm,num_leaves,lgbm_hpo_nl127,0.946100,+0.000005,451,--num_leaves 127
+2026-09-21 14:26,lgbm,num_leaves,lgbm_hpo_nl15,0.946070,-0.000025,1007,--num_leaves 15
+2026-09-21 14:39,lgbm,num_leaves,lgbm_hpo_nl63,0.946100,+0.000005,733,--num_leaves 63
+2026-09-21 14:47,lgbm,num_leaves,lgbm_hpo_nl127,0.946100,+0.000005,507,--num_leaves 127
