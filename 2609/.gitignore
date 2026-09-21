@@ -19,3 +19,9 @@ __pycache__/
 # Kaggle カーネルの実行成果物(再現可能なので追跡しない。スクリプトと metadata は追跡する)
 kaggle_kernel_*/output/
 *.log
+
+# 公開対象外(ローカルでのみ管理)
+Log.md
+research.md
+nippo.md
+main.py

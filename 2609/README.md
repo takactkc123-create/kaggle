@@ -5,8 +5,8 @@ EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二�
 - コンペ: https://www.kaggle.com/competitions/playground-series-s6e9
 - **最良スコア: CV 0.94623 / Public LB 0.94645 — 273位 / 2543チーム(上位10.7%)**
 - 目標(上位15%)は達成済み。1位は 0.94675、締切は 2026-09-30
-- 方針・ルール: [CLAUDE.md](CLAUDE.md) / 実験ログ: [Log.md](Log.md) /
-  外部調査: [research.md](research.md) / 日報: [nippo.md](nippo.md)
+- 方針・ルール: [CLAUDE.md](CLAUDE.md)
+- 詳細な実験ログ・外部調査の記録はローカルで管理(公開リポジトリには含めていません)
 
 ## プロセス全体像
 
@@ -27,7 +27,7 @@ EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二�
 | ⑤ | HPO | `src/05_hpo.py` | `hpo_results.csv` |
 | ⑥ | Ensemble | `src/06_ensemble_hillclimb.py` | `submit/submission_hillclimb.csv` |
 | ⑦ | 評価 | `src/07_compare_oof.py` | 採否判定(paired DeLong 検定) |
-| — | Agents | `.claude/agents/*.md` | `docs/fe_results_*.md` / `research.md` |
+| — | Agents | `.claude/agents/*.md` | `docs/fe_results_*.md` |
 | — | 検証ハーネス | `tools/crosstest_*.py` | (本番には関与しない) |
 
 ---
@@ -95,7 +95,7 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 - catify(低カーデ数値のカテゴリ化)は **CatBoost 固有**(+0.0017)
 
 **効かなかったもの**: 四則演算、交互作用TE(2〜13列すべて)、行フィンガープリント、元データの追加。
-詳細は [Log.md](Log.md) の「Feature Engineering 検証結果」表(なぜ試したか / 期待した効果 / 考察つき)。
+各施策の詳細(なぜ試したか / 期待した効果 / 結果の考察)は `docs/fe_results_*.md` を参照。
 
 > `src/03_fe_<model>.py` は**関数の定義のみ**、`src/04_fe_run_<model>.py` が**実行**という分担。
 > この分離により、同じ関数を別のハーネス(`tools/`)からも再利用できる。
@@ -112,7 +112,7 @@ uv run tools/crosstest_gbdt.py --model lgbm --folds 2 --catify
 
 ## ⑤ HPO
 
-**列サブサンプリングの見落としが最大の伸びしろだった**(2026-09-20、[research.md](research.md) D-1)。
+**列サブサンプリングの見落としが最大の伸びしろだった**(2026-09-20、外部カーネル調査で発見)。
 92列のTE特徴量に対し全列を使うと、どの木も最強列(年収のTE)を根に選ぶため木が似通う。
 
 | モデル | 設定 | 効果 |
@@ -208,7 +208,7 @@ Claude Code のサブエージェントとして担当を置いている。定�
 |---|---|---|
 | `lgbm-lead` / `xgb-lead` / `catboost-lead` / `realmlp-lead` | 各モデルの CV AUC 向上を**競う** | `docs/fe_results_*.md` |
 | `fe-lead` | FE統括。**競争せず**、モデル間の取りこぼしを横展開する | `docs/fe_results_all.md` |
-| `research-lead` | 情報収集。**競争せず**、Kaggle の Code / Discussion から新しい手を持ち込む | [research.md](research.md) |
+| `research-lead` | 情報収集。**競争せず**、Kaggle の Code / Discussion から新しい手を持ち込む | (ローカル管理) |
 
 - モデル担当の審査は単体 AUC だけでなく、**他モデルとの非相関性**(アンサンブルへの貢献度)も見る
 - 支援役(`fe-lead` / `research-lead`)の評価は「他モデルがどれだけ伸びたか」
