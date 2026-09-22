@@ -78,6 +78,10 @@ def parse_args() -> argparse.Namespace:
         help="Bernoulli row subsample per tree (0 = CatBoost default bootstrap)",
     )
     p.add_argument("--save", action="store_true", help="write submission/oof/importance")
+    p.add_argument(
+        "--dump-features", action="store_true",
+        help="学習せず、fold1 の特徴量の列名を docs/features_<tag>.json に書いて終了する",
+    )
     p.add_argument("--tag", default="", help="label printed with the result")
     return p.parse_args()
 
@@ -261,6 +265,14 @@ def main() -> None:
                 for i, name in enumerate(fold_features)
                 if name in targets and name not in fold_cats
             ]
+
+        if args.dump_features:
+            import feature_dump
+            feature_dump.dump(
+                args.tag or "catboost", "CatBoost", fold_features,
+                cat_features=fold_cats, note=f"fe={args.fe}",
+            )
+            return
 
         model = CatBoostClassifier(**fold_params)
         model.fit(X_tr[fold_features], y_tr, cat_features=fold_cats)

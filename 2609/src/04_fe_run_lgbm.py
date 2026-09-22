@@ -61,6 +61,10 @@ def build_parser():
     )
     p.add_argument("--inner", type=int, default=5, help="inner folds for TE")
     p.add_argument("--save", action="store_true", help="write submission/oof/importance")
+    p.add_argument(
+        "--dump-features", action="store_true",
+        help="学習せず、fold1 の特徴量の列名を docs/features_<tag>.json に書いて終了する",
+    )
     p.add_argument("--tag", default="lgbm")
     p.add_argument(
         "--n_jobs",
@@ -230,6 +234,16 @@ def main():
             X_tr = pd.concat([X_tr.reset_index(drop=True), te_tr.reset_index(drop=True)], axis=1)
             X_va = pd.concat([X_va.reset_index(drop=True), te_va.reset_index(drop=True)], axis=1)
             X_te = pd.concat([X_te.reset_index(drop=True), te_te.reset_index(drop=True)], axis=1)
+
+        if args.dump_features:
+            import feature_dump
+            feature_dump.dump(
+                args.tag, "LightGBM", X_tr.columns,
+                cat_features=[c for c in X_tr.columns
+                              if str(X_tr[c].dtype) == "category"],
+                note=f"patterns={args.patterns} smooths={args.smooths}",
+            )
+            return
 
         model = LGBMClassifier(
             random_state=SEED,

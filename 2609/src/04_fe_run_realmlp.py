@@ -21,6 +21,7 @@ import argparse
 import math
 import os
 import random
+import sys
 import time
 import warnings
 
@@ -551,6 +552,10 @@ def main():
     ap.add_argument("--tag", type=str, default="realmlp", help="出力ファイル名の接尾辞")
     ap.add_argument("--no-save", action="store_true")
     ap.add_argument(
+        "--dump-features", action="store_true",
+        help="学習せず、fold1 の特徴量の列名を docs/features_<tag>.json に書いて終了する",
+    )
+    ap.add_argument(
         "--exact-te", action="store_true",
         help="厳密値TE(高カーデ2列+Smooth Keys3本, Triple smooth=auto/10/100 の15列)を追加",
     )
@@ -656,6 +661,15 @@ def main():
 
         if fold == 1:
             print(f"len(FEATURES): {X_tr.shape[1]}", flush=True)
+
+        if args.dump_features:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import feature_dump
+            feature_dump.dump(
+                args.tag, "RealMLP", X_tr.columns, cat_features=cat_cols,
+                note=f"exact_te={args.exact_te} digits={args.digits} no_orig={args.no_orig}",
+            )
+            return
         print(f"{'#' * 16}\n### Fold {fold}/5  (train={len(y_tr)}, val={len(y_val)})\n{'#' * 16}", flush=True)
 
         seed_everything(42 + fold)

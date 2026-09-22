@@ -29,6 +29,7 @@ EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二�
 | ⑤ | HPO | `src/05_hpo.py` | `hpo_results.csv` |
 | ⑥ | Ensemble | `src/06_ensemble_hillclimb.py` | `submit/submission_hillclimb.csv` |
 | ⑦ | 評価 | `src/07_compare_oof.py` | 採否判定(paired DeLong 検定) |
+| — | 補助 | `src/feature_dump.py` | 生成された列名を JSON に書き出す共通ヘルパー |
 | — | Agents | `.claude/agents/*.md` | `docs/fe_results_*.md` |
 
 ---
@@ -230,6 +231,20 @@ z=+8.48 で誤差でないことが確定した。
 
 ---
 
+### 使っている特徴量の列名を確認する
+
+`--dump-features` を付けると、**fold 1 の学習行列を組み上げた直後に列名を `docs/features_<tag>.json` へ書いて終了する**(学習しない)。本番と同じコードパスを通るので列の取りこぼしがない。結果は `notebooks/03_fe.ipynb` が読んで表示する。
+
+```bash
+uv run src/04_fe_run_lgbm.py --patterns base,te1,cnt1,digit,sk --smooths auto,10,100 \
+  --sample 0.02 --folds 1 --dump-features --tag lgbm
+uv run src/04_fe_run_xgb.py --pattern tte_sk_dig --sample 0.02 --folds 1 \
+  --dump-features --out-suffix ""
+uv run src/04_fe_run_catboost.py --fe te_all,catify,digits,skeys,te3 --folds 5 \
+  --rows 15000 --fast --dump-features --tag catboost
+uv run src/04_fe_run_realmlp.py --folds 1 --subsample 0.02 --dump-features --tag realmlp
+```
+
 ## Notebooks
 
 工程を上から読んで追えるようにしたもの。リポジトリのルートから起動しても、`notebooks/` から
@@ -241,7 +256,7 @@ z=+8.48 で誤差でないことが確定した。
 |---|---|---|
 | `notebooks/01_eda.ipynb` | ① | データの素性、カーディナリティ、値ごとの購入率 |
 | `notebooks/02_bl.ipynb` | ② | 3モデルのベースライン(共通の CV ループ) |
-| `notebooks/03_fe.ipynb` | ③ | FE 関数カタログ(`src/03_fe_all.py` ほか)の一覧と動作確認 |
+| `notebooks/03_fe.ipynb` | ③ | FE 関数カタログ + **各モデルが最終的に使っている列の全一覧** |
 | `notebooks/04_fe_run.ipynb` | ④ | FE を1つずつ足して効果を確認(効かない例も含む) |
 | `notebooks/05_hpo.ipynb` | ⑤ | HPO の設計・所要時間の見積もり(結果は未記入) |
 | `notebooks/06_ensemble.ipynb` | ⑥⑦ | ブレンドの再現。相関の確認と DeLong 検定による採否判定まで |

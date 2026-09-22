@@ -351,6 +351,16 @@ def run_cv(cfg, args):
             X_va = pd.concat([X_va.reset_index(drop=True), te_va.reset_index(drop=True)], axis=1)
             X_te = pd.concat([X_test.reset_index(drop=True), te_te.reset_index(drop=True)], axis=1)
 
+        if args.dump_features:
+            import feature_dump
+            feature_dump.dump(
+                f"xgb{args.out_suffix}", "XGBoost", X_tr.columns,
+                cat_features=[c for c in X_tr.columns
+                              if str(X_tr[c].dtype) == "category"],
+                note=f"pattern={args.pattern}",
+            )
+            return
+
         model = XGBClassifier(**params)
         if args.early_stopping:
             model.fit(X_tr, y.iloc[tr_idx], eval_set=[(X_va, y.iloc[va_idx])], verbose=False)
@@ -430,6 +440,10 @@ def main():
                     help="extra XGBClassifier param, repeatable")
     ap.add_argument("--n-jobs", type=int, default=-1)
     ap.add_argument("--save", action="store_true")
+    ap.add_argument(
+        "--dump-features", action="store_true",
+        help="学習せず、fold1 の特徴量の列名を docs/features_<tag>.json に書いて終了する",
+    )
     ap.add_argument(
         "--out-suffix",
         default="",
