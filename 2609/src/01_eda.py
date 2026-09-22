@@ -77,7 +77,8 @@ def grid(n, n_cols=4, w=16, h=4):
 def plot_target_distribution(df, target, show=False):
     counts = df[target].value_counts()
     plt.figure(figsize=(6, 4))
-    ax = sns.barplot(x=counts.index, y=counts.values, palette=PALETTE)
+    ax = sns.barplot(x=counts.index, y=counts.values, hue=counts.index,
+                     palette=PALETTE, legend=False)
     for i, v in enumerate(counts.values):
         ax.text(i, v, f"{v:,}\n({v / counts.sum():.1%})", ha="center", va="bottom")
     plt.title(f"Distribution of {target}")
@@ -139,7 +140,7 @@ def plot_boxplots_by_target(df, target, show=False):
     n_rows, n_cols = grid(len(NUM_COLS))
     for i, col in enumerate(NUM_COLS):
         plt.subplot(n_rows, n_cols, i + 1)
-        sns.boxplot(data=df, x=target, y=col, palette=PALETTE)
+        sns.boxplot(data=df, x=target, y=col, hue=target, palette=PALETTE, legend=False)
         plt.title(f"{col} by Target")
     save("06_boxplots_by_target.png", show)
 
@@ -151,7 +152,8 @@ def plot_target_rate_by_category(df, target, show=False):
     for i, col in enumerate(CAT_COLS):
         plt.subplot(n_rows, n_cols, i + 1)
         rate = y.groupby(df[col]).mean().sort_values()
-        sns.barplot(x=rate.index, y=rate.values, palette=PALETTE)
+        sns.barplot(x=rate.index, y=rate.values, hue=rate.index,
+                    palette=PALETTE, legend=False)
         plt.axhline(base, color="red", ls="--", lw=1, label=f"overall {base:.3f}")
         plt.title(f"Purchase rate by {col}")
         plt.ylabel("P(Yes)")
