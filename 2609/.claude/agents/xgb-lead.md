@@ -64,6 +64,9 @@ model: sonnet
   XGBoost は木の成長方式(level-wise)が LightGBM(leaf-wise)と異なるため元々多様性を出しやすい。
   エンコーディング方式を変えることでさらに非相関性を高められる。
 
+- **HPO は全滅と実測済み**。`max_depth` は 5 が最適で、6 は z=-5.77、7 は z=-6.33 と**有意に悪化**。
+  `colsample` / `min_child_weight` / `subsample` もすべて誤差。**再探索しないこと。**
+
 ## 遵守事項
 
 - **Kaggle への submit は行わない**(提出判断は指揮官が行う)
