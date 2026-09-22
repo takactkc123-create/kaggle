@@ -128,6 +128,12 @@ docs/features_<tag>.json  # 各モデルが使っている列名(--dump-features
   列の取りこぼしがない。**FE を変えたら必ず再生成すること**(コマンドは README 参照)。
   現行の列数は LightGBM 92 / XGBoost 93 / CatBoost 80 / RealMLP 38。
 
+- **`03_fe_<model>.py` は採用した関数だけを置く場所ではない。** 検証して捨てた施策も
+  再検証しないための記録として残す。どれが本番で生きているかは `src/feature_dump.py` の
+  **`FUNC_STATUS`** が持つ(現在 〇28 / ✖28 / 補助8 の計64関数)。
+  **FEを採用・不採用にしたらこの表も更新すること。**
+  `fd.verify_status()` が `docs/features_*.json` と突き合わせて矛盾を検出する。
+
 - `read_csv` までのフローは `02_bl_*.py` と同一にする(data/train.csv, data/test.csv)。
 - CVは **StratifiedKFold(n_splits=5, shuffle=True, random_state=42)** で全モデル統一。
   fold分割を揃えないとOOF同士のアンサンブル・相関評価ができないため、**変更禁止**。

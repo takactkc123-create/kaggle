@@ -98,6 +98,14 @@ uv run src/04_fe_run_catboost.py --fe te_all,catify,digits,skeys,te3 --folds 5 \
 `data/` はリポジトリに含めていないため**クローン先では再生成できない**。
 更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **80 列**。
 
+併せて `src/feature_dump.py` の **`FUNC_STATUS` も更新する**こと。
+`03_fe_catboost.py` は採用した関数だけを置く場所ではなく、**検証して捨てた施策も
+再検証しないための記録として残す**方針なので、どれが本番で生きているかは
+この表だけが知っている。`notebooks/03_fe.ipynb` の関数一覧の「採否」列はここを読む。
+- 採用したら `("03_fe_catboost", "関数名"): (ADOPTED, "根拠")`
+- 捨てたら `(REJECTED, "なぜ捨てたか")` — 根拠は後の自分が再検証しないためのもの
+- `fd.verify_status()` が `docs/features_*.json` と突き合わせて矛盾を検出する
+
 ## 遵守事項
 
 - **Kaggle への submit は行わない**(提出判断は指揮官が行う)

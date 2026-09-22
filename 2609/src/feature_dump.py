@@ -97,3 +97,145 @@ def load(tag: str) -> dict:
     """ダンプ済み JSON を読む(ノートブック用)。"""
     with open(os.path.join(OUT_DIR, f"features_{tag}.json"), encoding="utf-8") as f:
         return json.load(f)
+
+# ---------------------------------------------------------------------------
+# FE 関数の採否
+# ---------------------------------------------------------------------------
+# `03_fe_<model>.py` は**採用した関数だけを置く場所ではない**。検証して捨てた施策も
+# 「再検証しないための記録」として残してある。どれが本番で生きているのかを
+# コードから読み取るのは難しいので、ここに一覧で持つ。
+#
+#   ADOPTED  = 本番の構成で実際に呼ばれている
+#   REJECTED = 検証したうえで不採用。根拠を併記する(再検証不要)
+#   SUPPORT  = 補助・基盤。単体で採否を論じるものではない
+#
+# **この表は手で保つ。** ただし列を作る関数については `verify_status()` が
+# `docs/features_<tag>.json` と突き合わせて矛盾を検出できる。
+
+ADOPTED, REJECTED, SUPPORT = "〇", "✖", "—"
+
+# (モジュール, 関数名) -> (記号, 根拠)
+FUNC_STATUS = {
+    # ---- 03_fe_lgbm.py (本番: --patterns base,te1,cnt1,digit,sk) ----
+    ("03_fe_lgbm", "load_data"):               (SUPPORT,  "読み込み"),
+    ("03_fe_lgbm", "make_categorical"):        (ADOPTED,  "native category として渡す"),
+    ("03_fe_lgbm", "make_key_frame"):          (ADOPTED,  "TE / Count のキー生成"),
+    ("03_fe_lgbm", "add_arithmetic_meaningful"): (REJECTED, "四則演算 -0.00014。打ち止め"),
+    ("03_fe_lgbm", "add_arithmetic_all_pairs"): (REJECTED, "全ペア四則演算。同上"),
+    ("03_fe_lgbm", "add_group_means"):         (REJECTED, "行方向の平均。効果なし"),
+    ("03_fe_lgbm", "add_digit_features"):      (ADOPTED,  "15列。digit パターン"),
+    ("03_fe_lgbm", "add_smooth_keys"):         (ADOPTED,  "TEキー4本を追加 (sk)"),
+    ("03_fe_lgbm", "count_encode"):            (ADOPTED,  "+0.00083"),
+    ("03_fe_lgbm", "target_encode_fold"):      (ADOPTED,  "最大の改善要因"),
+    ("03_fe_lgbm", "single_keys"):             (ADOPTED,  "te1 / cnt1 のキー集合"),
+    ("03_fe_lgbm", "pair_keys"):               (REJECTED, "2列交互作用TE。全滅"),
+    ("03_fe_lgbm", "triple_keys"):             (REJECTED, "3列交互作用TE。全滅"),
+    ("03_fe_lgbm", "all_columns_key"):         (REJECTED, "行フィンガープリント。全行ユニークで原理的に不可"),
+    ("03_fe_lgbm", "fingerprint_key"):         (REJECTED, "同上(部分集合版)"),
+
+    # ---- 03_fe_xgb.py (本番: --pattern tte_sk_dig) ----
+    ("03_fe_xgb", "make_base"):                (ADOPTED,  "素の特徴量フレーム"),
+    ("03_fe_xgb", "as_native_category"):       (REJECTED, "ordinal と差なし。非相関性を狙い ordinal を採用"),
+    ("03_fe_xgb", "as_ordinal"):               (ADOPTED,  "XGBoost の最終採用方式"),
+    ("03_fe_xgb", "as_onehot"):                (REJECTED, "列が増えるだけで効果なし"),
+    ("03_fe_xgb", "add_arithmetic"):           (REJECTED, "四則演算。打ち止め"),
+    ("03_fe_xgb", "all_numeric_pairs"):        (REJECTED, "同上のペア列挙"),
+    ("03_fe_xgb", "add_count_encoding"):       (ADOPTED,  "+0.00049"),
+    ("03_fe_xgb", "digit_block"):              (SUPPORT,  "add_digit_features の内部"),
+    ("03_fe_xgb", "add_digit_features"):       (ADOPTED,  "16列 (小数第1位を含む)"),
+    ("03_fe_xgb", "make_smooth_keys"):         (ADOPTED,  "TEキー4本を追加"),
+    ("03_fe_xgb", "make_interaction_keys"):    (REJECTED, "交互作用キー。全滅"),
+    ("03_fe_xgb", "cat_pairs"):                (REJECTED, "同上のペア列挙"),
+    ("03_fe_xgb", "fit_target_encoding"):      (REJECTED, "非入れ子の旧版。入れ子版が +0.00108 で置き換え"),
+    ("03_fe_xgb", "apply_target_encoding"):    (REJECTED, "同上"),
+    ("03_fe_xgb", "fit_apply_te_cv"):          (REJECTED, "同上"),
+    ("03_fe_xgb", "fit_apply_te_cv_nested"):   (REJECTED, "単一 smooth 版。Triple TE が置き換え"),
+    ("03_fe_xgb", "fit_target_encoding_multi"): (REJECTED, "同上(非入れ子の複数smooth版)"),
+    ("03_fe_xgb", "apply_target_encoding_multi"): (REJECTED, "同上"),
+    ("03_fe_xgb", "prepare_te_codes"):         (SUPPORT,  "TEキーの整数コード化(高速化)"),
+    ("03_fe_xgb", "fit_apply_te_cv_nested_multi"): (ADOPTED, "本番の入れ子 Triple TE"),
+    ("03_fe_xgb", "add_row_aggregates"):       (REJECTED, "行方向の集約。効果なし"),
+
+    # ---- 03_fe_catboost.py (本番: --fe te_all,catify,digits,skeys,te3) ----
+    ("03_fe_catboost", "add_arithmetic"):      (REJECTED, "四則演算 -0.00099。最も悪化"),
+    ("03_fe_catboost", "add_interactions"):    (REJECTED, "交互作用キー。全滅"),
+    ("03_fe_catboost", "add_digits"):          (ADOPTED,  "+0.00061。既定ビン64が粗いため効いた"),
+    ("03_fe_catboost", "drop_constant"):       (SUPPORT,  "定数列の除去"),
+    ("03_fe_catboost", "add_smooth_keys"):     (ADOPTED,  "TEキー4本を追加 (skeys)"),
+    ("03_fe_catboost", "add_count_encoding"):  (REJECTED, "内部の Ordered TS と重複して無効"),
+    ("03_fe_catboost", "target_encode"):       (ADOPTED,  "te_all + te3 (Triple smooth)"),
+    ("03_fe_catboost", "cast_to_str"):         (ADOPTED,  "catify +0.00170。CatBoost 単体最大"),
+
+    # ---- 03_fe_realmlp.py (本番: 追加フラグなし) ----
+    ("03_fe_realmlp", "build_features"):       (ADOPTED,  "catify / ビン分割 / Smooth Keys を一括生成"),
+    ("03_fe_realmlp", "build_te_key_frame"):   (REJECTED, "--exact-te 用。単体 +0.000156 だがアンサンブル寄与ゼロ"),
+    ("03_fe_realmlp", "target_encode_highcard"): (REJECTED, "同上。GBDTとの相関が上がり多様性を損なう"),
+    ("03_fe_realmlp", "load_orig"):            (ADOPTED,  "元データ由来の org_mean。アンサンブル +0.000022"),
+
+    # ---- 03_fe_all.py (横断カタログ。どのモデルの本番でも import されない) ----
+    ("03_fe_all", "load_data"):                (SUPPORT,  "読み込み"),
+    ("03_fe_all", "get_y"):                    (SUPPORT,  "目的変数の0/1化"),
+    ("03_fe_all", "as_native_category"):       (ADOPTED,  "LightGBM が採用"),
+    ("03_fe_all", "as_ordinal"):               (ADOPTED,  "XGBoost が採用"),
+    ("03_fe_all", "as_str"):                   (ADOPTED,  "CatBoost の catify"),
+    ("03_fe_all", "make_key_frame"):           (ADOPTED,  "厳密値キー。全モデル"),
+    ("03_fe_all", "add_smooth_keys"):          (ADOPTED,  "全モデル"),
+    ("03_fe_all", "smooth_key_names"):         (SUPPORT,  "キー名の生成"),
+    ("03_fe_all", "add_digit_features"):       (ADOPTED,  "全モデル"),
+    ("03_fe_all", "drop_constant_cols"):       (SUPPORT,  "定数列の除去"),
+    ("03_fe_all", "count_encode"):             (ADOPTED,  "LightGBM / XGBoost のみ"),
+    ("03_fe_all", "target_encode_fold"):       (ADOPTED,  "GBDT3種"),
+    ("03_fe_all", "catify"):                   (ADOPTED,  "CatBoost のみ。他モデルでは逆効果"),
+    ("03_fe_all", "arithmetic_meaningful"):    (REJECTED, "四則演算。打ち止め"),
+    ("03_fe_all", "interaction_keys"):         (REJECTED, "交互作用キー。全滅"),
+    ("03_fe_all", "cat_pairs"):                (REJECTED, "同上のペア列挙"),
+}
+
+
+def status_of(module: str, func: str):
+    """(記号, 根拠) を返す。未登録なら ("?", "未分類")。"""
+    return FUNC_STATUS.get((module, func), ("?", "未分類"))
+
+
+# 「この関数が採用されていれば、この種類の列が本番に存在するはず」という対応。
+# verify_status() がこれを使って表と実データの矛盾を検出する。
+_EXPECT = {
+    "digit / 小数の分解": ["add_digit_features", "add_digits", "digit_block"],
+    "Count / Frequency": ["count_encode", "add_count_encoding"],
+    # RealMLP の target_encode_highcard はここに入れない。RealMLP の本番にも TE 列は
+    # 2本あるが、それは 04_fe_run_realmlp.py が sklearn の TargetEncoder で作るもので、
+    # この関数(--exact-te 専用)とは別経路。種類の有無では判別できない。
+    "Target Encoding":   ["target_encode_fold", "target_encode",
+                          "fit_apply_te_cv_nested_multi"],
+    "四則演算":           ["add_arithmetic_meaningful", "add_arithmetic_all_pairs",
+                          "add_arithmetic", "arithmetic_meaningful"],
+    "交互作用キー":        ["pair_keys", "triple_keys", "make_interaction_keys",
+                          "add_interactions", "interaction_keys"],
+}
+_MODULE_OF_TAG = {"lgbm": "03_fe_lgbm", "xgb": "03_fe_xgb",
+                  "catboost": "03_fe_catboost", "realmlp": "03_fe_realmlp"}
+
+
+def verify_status(tags=("lgbm", "xgb", "catboost", "realmlp")):
+    """採否表と docs/features_<tag>.json の矛盾を洗い出して行のリストで返す。
+
+    「〇 なのにその種類の列が 1 つも無い」「✖ なのに列がある」を検出する。
+    空リストなら矛盾なし。
+    """
+    rows = []
+    for tag in tags:
+        mod = _MODULE_OF_TAG[tag]
+        groups = {classify(c) for c in load(tag)["columns"]}
+        for group, funcs in _EXPECT.items():
+            for fn in funcs:
+                if (mod, fn) not in FUNC_STATUS:
+                    continue
+                mark, why = FUNC_STATUS[(mod, fn)]
+                if mark == SUPPORT:
+                    continue
+                present = group in groups
+                if mark == ADOPTED and not present:
+                    rows.append(f"{mod}.{fn}: 〇 だが本番に「{group}」の列が無い")
+                if mark == REJECTED and present:
+                    rows.append(f"{mod}.{fn}: ✖ だが本番に「{group}」の列がある ({why})")
+    return rows

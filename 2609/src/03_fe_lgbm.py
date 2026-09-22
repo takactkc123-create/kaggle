@@ -368,6 +368,7 @@ def target_encode_fold(
 # key set builders
 # --------------------------------------------------------------------------
 def single_keys(kind: str = "all"):
+    """単独列の TE / Count キー一覧. kind='all'/'cat'/'num' で絞る."""
     if kind == "all":
         return NUMERIC_COLS + CATEGORICAL_COLS
     if kind == "cat":
@@ -394,6 +395,7 @@ def pair_keys(kind: str = "cat"):
 
 
 def triple_keys(kind: str = "cat"):
+    """【打ち止め】3列を連結した交互作用キー."""
     if kind == "cat":
         return [tuple(p) for p in itertools.combinations(CATEGORICAL_COLS, 3)]
     if kind == "selected":

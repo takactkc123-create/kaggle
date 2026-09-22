@@ -143,6 +143,7 @@ def add_arithmetic(tr, te, src_tr, src_te, pairs=None, ops=("diff", "ratio", "su
 
 
 def all_numeric_pairs():
+    """【打ち止め】数値列の全2列ペアを列挙する (四則演算用)."""
     pairs = []
     for i, a in enumerate(NUMERIC_COLS):
         for b in NUMERIC_COLS[i + 1 :]:
@@ -261,6 +262,7 @@ def make_interaction_keys(src_tr, src_te, pairs):
 
 
 def cat_pairs(cols=None):
+    """【打ち止め】カテゴリ列の2列ペアを列挙する (交互作用TE用)."""
     cols = CATEGORICAL_COLS if cols is None else cols
     out = []
     for i, a in enumerate(cols):
@@ -418,6 +420,7 @@ def fit_target_encoding_multi(src_fit, y_fit, cols, smoothings=(20.0,), min_samp
 
 
 def apply_target_encoding_multi(src: pd.DataFrame, maps):
+    """複数 smooth の TE マップをまとめて適用する."""
     out = {}
     for name, (col, mapping, prior) in maps.items():
         out[name] = src[col].map(mapping).astype("float32").fillna(np.float32(prior))

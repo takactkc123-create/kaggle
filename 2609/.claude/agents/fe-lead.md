@@ -98,6 +98,14 @@ RealMLP への TE 導入は相関を上げて多様性を損ないました。�
 横展開の余地を探すとき、この JSON を突き合わせれば
 「あるモデルにあって別のモデルに無い列」が一目で分かる。
 
+採否そのものは `src/feature_dump.py` の `FUNC_STATUS` に集約してある。
+**横展開の候補を探すときは、まずここの ✖ を読むこと。** 「どのモデルで何を試して
+なぜ捨てたか」が根拠付きで載っているので、済んだ検証を繰り返さずに済む。
+
+```python
+[(m, f, why) for (m, f), (mark, why) in fd.FUNC_STATUS.items() if mark == fd.REJECTED]
+```
+
 ```python
 import sys; sys.path.insert(0, "src")
 import feature_dump as fd

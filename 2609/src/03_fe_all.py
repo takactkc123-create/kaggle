@@ -63,12 +63,14 @@ ALL_COLS = NUMERIC_COLS + CATEGORICAL_COLS
 # 0. データ読み込み (baseline_*.py と同一フロー)
 # ==========================================================================
 def load_data(data_dir: str = "data"):
+    """data/train.csv と data/test.csv を読む (02_bl_*.py と同じフロー)."""
     train = pd.read_csv(f"{data_dir}/train.csv")
     test = pd.read_csv(f"{data_dir}/test.csv")
     return train, test
 
 
 def get_y(train: pd.DataFrame) -> np.ndarray:
+    """目的変数を 0/1 の ndarray にする."""
     return (train[TARGET] == "Yes").astype(int).to_numpy()
 
 
@@ -143,6 +145,7 @@ SMOOTH_KEY_SCALES = (10, 100, 1000, 10000)
 
 def add_smooth_keys(keys: pd.DataFrame, df: pd.DataFrame, scales=SMOOTH_KEY_SCALES,
                     commute: bool = True) -> pd.DataFrame:
+    """年収・通勤距離を粗く丸めたキーを keys に追加して返す."""
     keys = keys.copy()
     inc = df["Annual_Income_USD"].to_numpy(dtype="float64")
     for s in scales:
@@ -154,6 +157,7 @@ def add_smooth_keys(keys: pd.DataFrame, df: pd.DataFrame, scales=SMOOTH_KEY_SCAL
 
 
 def smooth_key_names(scales=SMOOTH_KEY_SCALES, commute: bool = True):
+    """add_smooth_keys が作るキー名の一覧を返す."""
     out = [f"sk_inc{s}" for s in scales]
     return out + (["sk_commute"] if commute else [])
 
@@ -170,6 +174,7 @@ DIGIT_KS = list(range(-4, 4))
 
 
 def add_digit_features(df: pd.DataFrame, cols=None, ks=None) -> pd.DataFrame:
+    """数値列を桁ごとにばらした int8 列を作る ((x // 10**k) % 10)."""
     cols = NUMERIC_COLS if cols is None else cols
     ks = DIGIT_KS if ks is None else ks
     out = {}
@@ -203,6 +208,7 @@ def drop_constant_cols(frames, cols):
 #    実測: LGBM +0.00083 / XGB +0.00049 / CatBoost -0.00017(無効) / RealMLP 未検証。
 # ==========================================================================
 def count_encode(keys_tr: pd.DataFrame, keys_te: pd.DataFrame, cols, freq: bool = True):
+    """出現頻度を列にする. 目的変数を使わないので train+test でまとめて数える."""
     out_tr = pd.DataFrame(index=keys_tr.index)
     out_te = pd.DataFrame(index=keys_te.index)
     n_total = len(keys_tr) + len(keys_te)
@@ -357,5 +363,6 @@ def interaction_keys(tr, te, pairs):
 
 
 def cat_pairs(cols=None):
+    """【打ち止め】カテゴリ列の2列ペアを列挙する (交互作用TE用)."""
     cols = CATEGORICAL_COLS if cols is None else cols
     return [tuple(p) for p in itertools.combinations(cols, 2)]
