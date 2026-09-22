@@ -116,10 +116,17 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 05_hpo.py                 # ⑤ HPO(学習コードを持たず ④ を引数違いで呼ぶだけ)
 06_ensemble_hillclimb.py  # ⑥ 貪欲法でブレンド + 採用モデル間の相関を出力
 07_compare_oof.py         # ⑦ paired DeLong 検定(学習しない。保存済みOOFを読むだけ)
+feature_dump.py           # 補助。工程ではないので番号なし
 submit/                   # submission_<model>.csv
 oof/                      # oof_<model>.npy, pred_<model>.npy(アンサンブル用・必須)
 importance/               # importance_<model>.png(feature importance 棒グラフ)
+docs/features_<tag>.json  # 各モデルが使っている列名(--dump-features で生成)
 ```
+
+- `04_fe_run_<model>.py` に `--dump-features` を付けると、**fold 1 の学習行列を組み上げた直後に
+  列名を `docs/features_<tag>.json` へ書いて終了する**(学習しない)。本番と同じコードパスを通るので
+  列の取りこぼしがない。**FE を変えたら必ず再生成すること**(コマンドは README 参照)。
+  現行の列数は LightGBM 92 / XGBoost 93 / CatBoost 80 / RealMLP 38。
 
 - `read_csv` までのフローは `02_bl_*.py` と同一にする(data/train.csv, data/test.csv)。
 - CVは **StratifiedKFold(n_splits=5, shuffle=True, random_state=42)** で全モデル統一。

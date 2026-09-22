@@ -3,9 +3,9 @@
 担当: CatBoost Lead / ベースライン `baseline_catboost.py` OOF AUC = **0.94156**(デフォルトパラメータ・5-fold)
 
 実装:
-- `fe_catboost.py` — FE関数の定義のみ
-- `catboost_preprocessing.py` — `--fe` に FEコンポーネントをカンマ区切りで渡して実行
-  (例: `uv run catboost_preprocessing.py --fe te_all,catify --folds 5 --save`)
+- `03_fe_catboost.py` — FE関数の定義のみ
+- `04_fe_run_catboost.py` — `--fe` に FEコンポーネントをカンマ区切りで渡して実行
+  (例: `uv run src/04_fe_run_catboost.py --fe te_all,catify --folds 5 --save`)
 
 ## 検証環境の制約(重要)
 
@@ -56,7 +56,7 @@ TE はすべて **fold内 fit** を厳守:
 ## 最終構成(フルデータ・5-fold)
 
 ```
-uv run catboost_preprocessing.py --fe te_all,catify --folds 5 --iters 400 --lr 0.15 --fast --save
+uv run src/04_fe_run_catboost.py --fe te_all,catify --folds 5 --iters 400 --lr 0.15 --fast --save
 ```
 
 | 項目 | 値 |
@@ -216,7 +216,7 @@ TE はキーあたりの行数が減っても平滑化が効くため、サブ�
 ## CPUが空いたときに回すべきコマンド(最優先TODO)
 
 ```
-uv run catboost_preprocessing.py --fe te_all,catify,digits,skeys,te3 \
+uv run src/04_fe_run_catboost.py --fe te_all,catify,digits,skeys,te3 \
   --folds 5 --iters 1000 --lr 0.06 --fast --border 64 --hc-border 1024 \
   --threads 6 --save
 ```
@@ -237,17 +237,17 @@ LightGBM/XGBoost が使う `"auto"`(sklearn TargetEncoder の経験ベイズ則)
 
 ## 実施した変更(検証後にすべて revert 済み)
 
-- `fe_catboost.py`: `SMOOTH_KEY_SPECS` の `sk_inc_1` → `sk_inc_10` に置換、`sk_inc_10000` を追加
-- `fe_catboost.py`: `_smooth_tag` を文字列 `"auto"` に対応(`isinstance(smooth, str)` 分岐を追加)
-- `fe_catboost.py`: `_te_map_from_agg` を新設し、`smooth="auto"` のとき
+- `03_fe_catboost.py`: `SMOOTH_KEY_SPECS` の `sk_inc_1` → `sk_inc_10` に置換、`sk_inc_10000` を追加
+- `03_fe_catboost.py`: `_smooth_tag` を文字列 `"auto"` に対応(`isinstance(smooth, str)` 分岐を追加)
+- `03_fe_catboost.py`: `_te_map_from_agg` を新設し、`smooth="auto"` のとき
   `m_i = p_i(1-p_i) / (p(1-p))`(sklearn `TargetEncoder(smooth="auto")` と同一の経験ベイズ則、
   fe_lgbm.py の実装と同型)を計算するようにした。数値 `smooth` の場合は従来と同じ
   `(sum + prior*m)/(count + m)` で挙動不変(純粋なリファクタ)
-- `catboost_preprocessing.py`: `TRIPLE_SMOOTHS = ["auto", 10.0, 100.0]`
+- `04_fe_run_catboost.py`: `TRIPLE_SMOOTHS = ["auto", 10.0, 100.0]`
   (旧: `[10.0, 20.0, 100.0]`)
-- `catboost_preprocessing.py`: `--hc-border` のターゲット判定タプルに `"auto"` を追加
+- `04_fe_run_catboost.py`: `--hc-border` のターゲット判定タプルに `"auto"` を追加
 
-コード自体は `uv run catboost_preprocessing.py --fe te_all,catify,digits,skeys,te3 --folds 2 --iters 100
+コード自体は `uv run src/04_fe_run_catboost.py --fe te_all,catify,digits,skeys,te3 --folds 2 --iters 100
 --lr 0.2 --fast --border 32 --hc-border 64 --rows 50000` のスモークテストで例外なく動作することを確認済み
 (te_cols=18、正常終了)。
 
@@ -263,7 +263,7 @@ Windows環境の `uv` 呼び出し起因で `exit code 127` により未完走)
 
 **+0.00005 は採否基準 ±0.0004 を大きく下回る**。単一foldでの測定のためノイズ幅はさらに広く、
 判定材料として十分。指揮官の指示により作業を中止し、**コードは `backup_20260918/` の状態に
-完全 revert 済み**(`diff -q` で `fe_catboost.py` / `catboost_preprocessing.py` ともにバックアップと
+完全 revert 済み**(`diff -q` で `03_fe_catboost.py` / `04_fe_run_catboost.py` ともにバックアップと
 バイト同一であることを確認)。成果物(`oof/`, `submit/`, `importance/`)も更新していない
 (mtime 変化なし、`oof_catboost.npy` は revert 前と `np.array_equal` で一致確認済み)。
 

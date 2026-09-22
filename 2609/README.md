@@ -245,6 +245,8 @@ uv run src/04_fe_run_catboost.py --fe te_all,catify,digits,skeys,te3 --folds 5 \
 uv run src/04_fe_run_realmlp.py --folds 1 --subsample 0.02 --dump-features --tag realmlp
 ```
 
+**FE を変えたら再生成すること。** JSON は生成物だが `data/` を含めていないためクローン先では作り直せない。ノートブックの表示元になるのでリポジトリに含めている。
+
 ## Notebooks
 
 工程を上から読んで追えるようにしたもの。リポジトリのルートから起動しても、`notebooks/` から
@@ -258,7 +260,7 @@ uv run src/04_fe_run_realmlp.py --folds 1 --subsample 0.02 --dump-features --tag
 | `notebooks/02_bl.ipynb` | ② | 3モデルのベースライン(共通の CV ループ) |
 | `notebooks/03_fe.ipynb` | ③ | FE 関数カタログ + **各モデルが最終的に使っている列の全一覧** |
 | `notebooks/04_fe_run.ipynb` | ④ | FE を1つずつ足して効果を確認(効かない例も含む) |
-| `notebooks/05_hpo.ipynb` | ⑤ | HPO の設計・所要時間の見積もり(結果は未記入) |
+| `notebooks/05_hpo.ipynb` | ⑤ | HPO の設計と所要時間の見積もり + 24試行の結果(すべて誤差か悪化) |
 | `notebooks/06_ensemble.ipynb` | ⑥⑦ | ブレンドの再現。相関の確認と DeLong 検定による採否判定まで |
 
 Jupyter で開く際は、カーネルに **`Python (kaggle 2609)`**(または `.venv` の Python)を選ぶこと。

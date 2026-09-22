@@ -3,8 +3,8 @@
 - ベースライン: `baseline_xgb.py` OOF AUC **0.94124**(数値7列 + カテゴリ6列、native category dtype、デフォルトパラメータ)
 - CV: StratifiedKFold(n_splits=5, shuffle=True, random_state=42) 固定。全て**フル5-fold・フルデータ**で測定
 - 採否基準: ベースライン +0.0002 以上で採用
-- 実装: FE関数 = `fe_xgb.py` / 実行 = `xgb_preprocessing.py`(`--pattern` で切替)
-- 最終構成の再現: `uv run xgb_preprocessing.py --pattern final --save`
+- 実装: FE関数 = `03_fe_xgb.py` / 実行 = `04_fe_run_xgb.py`(`--pattern` で切替)
+- 最終構成の再現: `uv run src/04_fe_run_xgb.py --pattern final --save`
 
 ## 効果あり(採用)
 
