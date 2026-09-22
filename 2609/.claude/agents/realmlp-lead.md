@@ -70,6 +70,20 @@ fold 分割が全モデル共通(`random_state=42`)なので共通ノイズが�
 単体が伸びても**アンサンブルCV(現行 0.94623)が上がらなければ採用しない**。
 `src/06_ensemble_hillclimb.py` で確認すること。
 
+## FE を変えたら特徴量一覧を再生成する
+
+採用が決まって `03_fe_realmlp.py` / `04_fe_run_realmlp.py` の**列構成を変えたら**、
+その場で下のコマンドを流して `docs/features_realmlp.json` を更新すること。
+**学習しないので 30 秒程度**で終わる(fold 1 の学習行列を組んだ直後に列名を書いて終了する)。
+
+```bash
+uv run src/04_fe_run_realmlp.py --folds 1 --subsample 0.02 --dump-features --tag realmlp
+```
+
+この JSON は `notebooks/03_fe.ipynb` が読んで「各モデルが使っている列」を表示する唯一の情報源。
+`data/` はリポジトリに含めていないため**クローン先では再生成できない**。
+更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **38 列**。
+
 ## 遵守事項
 
 - **Kaggleへのsubmitは行わない**(提出判断は指揮官)

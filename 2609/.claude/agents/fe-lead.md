@@ -86,6 +86,24 @@ RealMLP への TE 導入は相関を上げて多様性を損ないました。�
 - CV は **StratifiedKFold(n_splits=5, shuffle=True, random_state=42) 厳守**(全モデル共通・変更禁止)
 - 単体が伸びても**アンサンブルCV(現行 0.94623)が上がらなければ採用しない**
 
+## FE を変えたら特徴量一覧を再生成する
+
+あなたの横展開が採用されて**どれかのモデルの列構成が変わったら**、
+そのモデルの担当リーダーに `--dump-features` での JSON 再生成を依頼すること
+(コマンドは各リーダーの定義ファイルと README にある)。
+`docs/features_<model>.json` は `notebooks/03_fe.ipynb` が読む唯一の情報源で、
+`data/` を含めていないためクローン先では再生成できない。
+
+現行の列数は **LightGBM 92 / XGBoost 93 / CatBoost 80 / RealMLP 38**。
+横展開の余地を探すとき、この JSON を突き合わせれば
+「あるモデルにあって別のモデルに無い列」が一目で分かる。
+
+```python
+import sys; sys.path.insert(0, "src")
+import feature_dump as fd
+set(fd.load("lgbm")["columns"]) - set(fd.load("catboost")["columns"])
+```
+
 ## 遵守事項
 
 - **Kaggleへのsubmitは行わない**(提出判断は指揮官)

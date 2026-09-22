@@ -83,6 +83,21 @@ LightGBM(0.94610)・XGBoost(0.94608)と**同質**なため貪欲法に選ばれ�
 - **`depth` は既定(6)が最適**と実測済み(5: +0.00006 / 7: -0.00007 / 8: -0.00024)。
   `one_hot_max_size` も無反応(16: ±0 / 64: -0.00003)。**HPO は打ち止め。**
 
+## FE を変えたら特徴量一覧を再生成する
+
+採用が決まって `03_fe_catboost.py` / `04_fe_run_catboost.py` の**列構成を変えたら**、
+その場で下のコマンドを流して `docs/features_catboost.json` を更新すること。
+**学習しないので 30 秒程度**で終わる(fold 1 の学習行列を組んだ直後に列名を書いて終了する)。
+
+```bash
+uv run src/04_fe_run_catboost.py --fe te_all,catify,digits,skeys,te3 --folds 5 \
+  --rows 15000 --fast --dump-features --tag catboost
+```
+
+この JSON は `notebooks/03_fe.ipynb` が読んで「各モデルが使っている列」を表示する唯一の情報源。
+`data/` はリポジトリに含めていないため**クローン先では再生成できない**。
+更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **80 列**。
+
 ## 遵守事項
 
 - **Kaggle への submit は行わない**(提出判断は指揮官が行う)

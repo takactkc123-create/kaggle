@@ -67,6 +67,21 @@ model: sonnet
 - **HPO は全滅と実測済み**。`max_depth` は 5 が最適で、6 は z=-5.77、7 は z=-6.33 と**有意に悪化**。
   `colsample` / `min_child_weight` / `subsample` もすべて誤差。**再探索しないこと。**
 
+## FE を変えたら特徴量一覧を再生成する
+
+採用が決まって `03_fe_xgb.py` / `04_fe_run_xgb.py` の**列構成を変えたら**、
+その場で下のコマンドを流して `docs/features_xgb.json` を更新すること。
+**学習しないので 30 秒程度**で終わる(fold 1 の学習行列を組んだ直後に列名を書いて終了する)。
+
+```bash
+uv run src/04_fe_run_xgb.py --pattern tte_sk_dig --sample 0.02 --folds 1 \
+  --dump-features --out-suffix ""
+```
+
+この JSON は `notebooks/03_fe.ipynb` が読んで「各モデルが使っている列」を表示する唯一の情報源。
+`data/` はリポジトリに含めていないため**クローン先では再生成できない**。
+更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **93 列**。
+
 ## 遵守事項
 
 - **Kaggle への submit は行わない**(提出判断は指揮官が行う)
