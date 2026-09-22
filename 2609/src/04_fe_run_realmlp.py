@@ -46,7 +46,8 @@ target_encode_highcard = _fe_realmlp.target_encode_highcard
 
 warnings.filterwarnings("ignore")
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+# src/ からリポジトリルートを指す(data/ や oof/ はルート基準)
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ORIG_PATH = os.path.join(ROOT, "data", "EV_Adoption_and_Range_Anxiety_Dataset.csv")
 
 
@@ -554,6 +555,10 @@ def main():
         help="厳密値TE(高カーデ2列+Smooth Keys3本, Triple smooth=auto/10/100 の15列)を追加",
     )
     ap.add_argument(
+        "--no-orig", action="store_true",
+        help="元データ(EV_Adoption...csv)由来の org_mean 特徴量を使わない。外部データの寄与の切り分け用",
+    )
+    ap.add_argument(
         "--digits", action="store_true",
         help="高カーデ2列(年収・通勤距離)の各桁をカテゴリ特徴として追加",
     )
@@ -571,7 +576,7 @@ def main():
     # ── Load ──────────────────────────────────────────────────────────────
     train = pd.read_csv(os.path.join(ROOT, "data", "train.csv"))
     test = pd.read_csv(os.path.join(ROOT, "data", "test.csv"))
-    orig = load_orig(ORIG_PATH)
+    orig = None if args.no_orig else load_orig(ORIG_PATH)
     print(f"orig data: {'loaded ' + str(orig.shape) if orig is not None else 'NOT FOUND (org_mean skip)'}")
 
     train[TARGET] = (train[TARGET] == "Yes").astype(int)
