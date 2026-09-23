@@ -8,7 +8,7 @@
 足してもアンサンブルは伸びない(弱くても非相関なら勝てる = diversity beats strength)。
 
 ⚠ この出力をそのまま信じないこと。貪欲法は OOF 上の偶然を拾う。
-採用を判断する前に必ず `07_compare_oof.py` の DeLong 検定で有意性を確認する。
+採用を判断する前に必ず `07_compare_predictions.py` の DeLong 検定で有意性を確認する。
 """
 
 import glob

@@ -1,7 +1,7 @@
 """Feature engineering functions for the CatBoost model (S6E9).
 
 This module contains ONLY function/constant definitions. No execution code.
-`04_fe_run_catboost.py` imports it and runs the CV.
+`04_train_and_evaluate_catboost.py` imports it and runs the CV.
 
 Design notes
 ------------

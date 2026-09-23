@@ -1,13 +1,13 @@
 """CatBoost training / evaluation script for S6E9.
 
-Imports the FE functions from `03_fe_catboost.py`, builds a feature set from the
+Imports the FE functions from `03_feature_engineering_catboost.py`, builds a feature set from the
 components given with `--fe`, runs StratifiedKFold CV and (optionally) writes
 the ensemble artifacts.
 
 Examples
 --------
-  uv run 04_fe_run_catboost.py --fe base --folds 3 --iters 400 --lr 0.15
-  uv run 04_fe_run_catboost.py --fe te_all,catify --save
+  uv run 04_train_and_evaluate_catboost.py --fe base --folds 3 --iters 400 --lr 0.15
+  uv run 04_train_and_evaluate_catboost.py --fe te_all,catify --save
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 
 import importlib
-fe = importlib.import_module("03_fe_catboost")
+fe = importlib.import_module("03_feature_engineering_catboost")
 
 ALL_COMPONENTS = {
     "base",      # nothing extra
@@ -267,8 +267,8 @@ def main() -> None:
             ]
 
         if args.dump_features:
-            import feature_dump
-            feature_dump.dump(
+            import feature_catalog
+            feature_catalog.dump(
                 args.tag or "catboost", "CatBoost", fold_features,
                 cat_features=fold_cats, note=f"fe={args.fe}",
             )

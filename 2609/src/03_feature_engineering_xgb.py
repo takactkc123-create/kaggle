@@ -1,7 +1,7 @@
 """Feature engineering functions for XGBoost (S6E9).
 
 This module defines FE *functions only*. No execution code.
-`04_fe_run_xgb.py` imports these and runs CV.
+`04_train_and_evaluate_xgb.py` imports these and runs CV.
 
 Two kinds of functions:
   1. Fold-independent transforms (arithmetic, count/frequency encoding,
@@ -56,7 +56,7 @@ LOW_CARD_NUMERIC = [
 def make_base(train: pd.DataFrame, test: pd.DataFrame):
     """Baseline feature frames: numeric as-is + categorical as pandas Categorical.
 
-    Mirrors 02_bl_xgb.py (enable_categorical=True path).
+    Mirrors 02_baseline_xgb.py (enable_categorical=True path).
     """
     tr = train[NUMERIC_COLS + CATEGORICAL_COLS].copy()
     te = test[NUMERIC_COLS + CATEGORICAL_COLS].copy()

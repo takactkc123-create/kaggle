@@ -11,8 +11,8 @@
   CV は StratifiedKFold(n_splits=5, shuffle=True, random_state=42) 固定 (他モデルと fold 共通)。
 
 使い方:
-  uv run python 04_fe_run_realmlp.py                     # 本番 (5-fold フル)
-  uv run python 04_fe_run_realmlp.py --folds 1 --subsample 0.1 --epochs 1 --tag bench
+  uv run python 04_train_and_evaluate_realmlp.py                     # 本番 (5-fold フル)
+  uv run python 04_train_and_evaluate_realmlp.py --folds 1 --subsample 0.1 --epochs 1 --tag bench
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import TargetEncoder
 
 import importlib
-_fe_realmlp = importlib.import_module("03_fe_realmlp")
+_fe_realmlp = importlib.import_module("03_feature_engineering_realmlp")
 EXACT_TE_SMOOTHS = _fe_realmlp.EXACT_TE_SMOOTHS
 ID = _fe_realmlp.ID
 TARGET = _fe_realmlp.TARGET
@@ -664,8 +664,8 @@ def main():
 
         if args.dump_features:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-            import feature_dump
-            feature_dump.dump(
+            import feature_catalog
+            feature_catalog.dump(
                 args.tag, "RealMLP", X_tr.columns, cat_features=cat_cols,
                 note=f"exact_te={args.exact_te} digits={args.digits} no_orig={args.no_orig}",
             )

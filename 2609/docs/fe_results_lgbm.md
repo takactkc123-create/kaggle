@@ -1,7 +1,7 @@
 # LightGBM FE 検証結果 (S6E9)
 
 担当: LightGBM Lead / 2026-09-11〜12
-実装: [fe_lgbm.py](../src/03_fe_lgbm.py)(FE関数定義) + [04_fe_run_lgbm.py](../src/04_fe_run_lgbm.py)(実行)
+実装: [fe_lgbm.py](../src/03_feature_engineering_lgbm.py)(FE関数定義) + [04_train_and_evaluate_lgbm.py](../src/04_train_and_evaluate_lgbm.py)(実行)
 
 ## 前提・検証条件
 
@@ -123,10 +123,10 @@ TEもCountも定数に縮退するだけなので、`terow`/`cntrow` は**CV実�
 
 ```bash
 # スクリーニング(3-fold)
-uv run src/04_fe_run_lgbm.py --patterns base,te1 --folds 3
+uv run src/04_train_and_evaluate_lgbm.py --patterns base,te1 --folds 3
 
 # 最終構成(フル5-fold + 成果物出力)
-uv run src/04_fe_run_lgbm.py --patterns base,te1,cnt1 --save --tag lgbm
+uv run src/04_train_and_evaluate_lgbm.py --patterns base,te1,cnt1 --save --tag lgbm
 ```
 
 利用可能なパターン: `base` / `arith` / `arith_all` / `gmean` / `cnt1` / `cnt2` / `cnt2all` / `cntrow`

@@ -1,8 +1,8 @@
 """S6E9 統合 FE カタログ (FE Lead 管轄).
 
 4本の `fe_<model>.py` に散らばっていた FE 関数を、**モデル非依存の統一インターフェース**
-として1箇所にまとめたもの。既存の `03_fe_lgbm.py` / `03_fe_xgb.py` / `03_fe_catboost.py` /
-`03_fe_realmlp.py` は一切変更していない。このファイルは独立した集約版カタログであり、
+として1箇所にまとめたもの。既存の `03_feature_engineering_lgbm.py` / `03_feature_engineering_xgb.py` / `03_feature_engineering_catboost.py` /
+`03_feature_engineering_realmlp.py` は一切変更していない。このファイルは独立した集約版カタログであり、
 横展開テスト (`tools/crosstest_gbdt.py`) の入力になる。
 
 各関数の docstring に **実装差分** (どのモデル版と何が違うか) を明記している。
@@ -63,7 +63,7 @@ ALL_COLS = NUMERIC_COLS + CATEGORICAL_COLS
 # 0. データ読み込み (baseline_*.py と同一フロー)
 # ==========================================================================
 def load_data(data_dir: str = "data"):
-    """data/train.csv と data/test.csv を読む (02_bl_*.py と同じフロー)."""
+    """data/train.csv と data/test.csv を読む (02_baseline_*.py と同じフロー)."""
     train = pd.read_csv(f"{data_dir}/train.csv")
     test = pd.read_csv(f"{data_dir}/test.csv")
     return train, test

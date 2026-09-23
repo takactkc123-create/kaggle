@@ -1,13 +1,13 @@
 # FE 統括レポート(FE Lead)
 
 S6E9 の4モデル(LightGBM / XGBoost / CatBoost / RealMLP)に散らばっていた FE を
-`03_fe_all.py` に集約し、**「あるモデルで有効だが別のモデルに未適用」** の取りこぼしを
+`03_feature_engineering_all.py` に集約し、**「あるモデルで有効だが別のモデルに未適用」** の取りこぼしを
 洗い出して検証した記録。
 
-- 集約カタログ: [03_fe_all.py](../src/03_fe_all.py)
+- 集約カタログ: [03_feature_engineering_all.py](../src/03_feature_engineering_all.py)
 - 検証ハーネス: `tools/crosstest_gbdt.py`(GBDT 3種)/ `tools/crosstest_realmlp.py`
   (検証用スクリプトのためリポジトリには含めていない)
-- 既存の `03_fe_<model>.py` / `04_fe_run_<model>.py` は**一切変更していない**。
+- 既存の `03_feature_engineering_<model>.py` / `04_train_and_evaluate_<model>.py` は**一切変更していない**。
 
 ---
 
@@ -36,7 +36,7 @@ S6E9 の4モデル(LightGBM / XGBoost / CatBoost / RealMLP)に散らばってい
 
 **RealMLP は「厳密値 Target Encoding」を持っていない。**
 Log.md Run 12 には「全モデルに Triple TE を適用」とあるが、コードを読むと
-`04_fe_run_realmlp.py` の TE は `combo_names`(= income×RangeAnxiety, age×RangeAnxiety の
+`04_train_and_evaluate_realmlp.py` の TE は `combo_names`(= income×RangeAnxiety, age×RangeAnxiety の
 **2列だけ**)に `sklearn.TargetEncoder(smooth="auto")` を当てているにすぎない。
 13列の厳密値 TE も Smooth Keys の TE も入っていない。
 GBDT で最大の改善要因(各 +0.003 前後)だった施策が、4モデル中1モデルだけ抜けている。
@@ -57,12 +57,12 @@ GBDT で最大の改善要因(各 +0.003 前後)だった施策が、4モデル�
 `Annual_Income_USD` は整数値なので **`floor(income) == income`**。
 つまり **CatBoost の `sk_inc_1` は厳密値 TE キーとビット同一の重複列**で、
 TE 列が1本まるまる無駄になっている。さらに CatBoost には `/10` も `/10000` も無い。
-`03_fe_xgb.py` のコメントはこの重複に気づいて意図的に除外している(実装間で知見が共有されていない)。
+`03_feature_engineering_xgb.py` のコメントはこの重複に気づいて意図的に除外している(実装間で知見が共有されていない)。
 
 ### 2-2. Triple TE の smooth 集合が CatBoost だけ違う
 
 - LGBM / XGB: `("auto", 10, 100)`
-- CatBoost: `[10.0, 20.0, 100.0]`(`04_fe_run_catboost.py:44 TRIPLE_SMOOTHS`)
+- CatBoost: `[10.0, 20.0, 100.0]`(`04_train_and_evaluate_catboost.py:44 TRIPLE_SMOOTHS`)
 
 `auto` は sklearn TargetEncoder 相当の経験ベイズ則(`m_i = p_i(1-p_i) / p(1-p)`)で、
 純粋なキーをほぼ無平滑、50/50 のキーを強く縮める **固定 m とは質的に別物**。
@@ -179,7 +179,7 @@ RealMLP の PBLD(periodic bias-linear-dense)埋め込みは**数値列1本ごと
 
 ## 4. モデル別の推奨(指揮官への提案)
 
-実装は指揮官の判断。FE Lead は `fe_<model>.py` / `04_fe_run_<model>.py` を変更していない。
+実装は指揮官の判断。FE Lead は `fe_<model>.py` / `04_train_and_evaluate_<model>.py` を変更していない。
 
 ### CatBoost — ★最優先・コスト最小
 
@@ -191,10 +191,10 @@ RealMLP の PBLD(periodic bias-linear-dense)埋め込みは**数値列1本ごと
 Triple TE により **TE列を3本まるごと無駄に消費**している(さらに CatBoost はこれを
 `per_float_feature_quantization` の対象にもしている)。
 
-`03_fe_xgb.py` は同じ問題に気づいて意図的に除外しており(コードコメントあり)、
+`03_feature_engineering_xgb.py` は同じ問題に気づいて意図的に除外しており(コードコメントあり)、
 **モデル間で知見が共有されていなかった典型例**。
 
-変更箇所: `03_fe_catboost.py` の `SMOOTH_KEY_SPECS`
+変更箇所: `03_feature_engineering_catboost.py` の `SMOOTH_KEY_SPECS`
 
 ```python
 SMOOTH_KEY_SPECS = [
@@ -211,7 +211,7 @@ SMOOTH_KEY_SPECS = [
 
 **(b) Triple TE に `auto` を入れる**
 
-`04_fe_run_catboost.py:44` の `TRIPLE_SMOOTHS = [10.0, 20.0, 100.0]` は
+`04_train_and_evaluate_catboost.py:44` の `TRIPLE_SMOOTHS = [10.0, 20.0, 100.0]` は
 **固定 m を3つ並べているだけ**で、LGBM / XGB が使っている `auto`(sklearn TargetEncoder の
 経験ベイズ則 `m_i = p_i(1-p_i) / p(1-p)`)が入っていない。`auto` はキーごとに平滑強度を変える
 **質的に別系統**の推定量で、10/20/100 とは冗長になりにくい。
@@ -222,7 +222,7 @@ TRIPLE_SMOOTHS = ["auto", 10.0, 100.0]   # LGBM / XGB と揃える
 
 ⚠ 注意: `fe_catboost._smooth_tag` は `f"{smooth:g}"` で、文字列 `"auto"` を渡すと **例外になる**。
 `_smooth_tag` を `fe_all._smooth_tag` 相当(str をそのまま返す)に直す必要がある。
-さらに `04_fe_run_catboost.py` の `--hc-border` ターゲット判定が
+さらに `04_train_and_evaluate_catboost.py` の `--hc-border` ターゲット判定が
 `for tag in ("", "10", "20", "100")` とハードコードされているので `"auto"` を足すこと。
 
 ⚠ **【2026-09-18 追記・実測結果】この提案は 1-fold 検証で +0.00005 しか動かなかった(§3-4)。**

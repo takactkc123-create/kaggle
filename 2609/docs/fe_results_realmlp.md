@@ -13,12 +13,12 @@ CPU競合で完走せず、かつ RealMLP は列追加コストが高い(PBLD em
 
 ### 実装
 
-- `03_fe_realmlp.py` に追加: `build_te_key_frame`(キー: `Annual_Income_USD`, `Daily_Commute_km` の
+- `03_feature_engineering_realmlp.py` に追加: `build_te_key_frame`(キー: `Annual_Income_USD`, `Daily_Commute_km` の
   厳密値 + `sk_inc10`/`sk_inc100`/`sk_inc1000` の Smooth Keys、計5キー)、
   `target_encode_highcard`(入れ子CV: outer fold 内で inner `StratifiedKFold(5)` を回し、
   学習行には inner-OOF、valid/test には学習fold全体の統計を適用してリーク防止)、
   smooth は `auto`/10/100 の Triple 同時投入 → **5キー × 3 smooth = 15列**。
-- `04_fe_run_realmlp.py` に `--exact-te` フラグを追加(デフォルト `False` = 既存動作と完全に同じ)。
+- `04_train_and_evaluate_realmlp.py` に `--exact-te` フラグを追加(デフォルト `False` = 既存動作と完全に同じ)。
   ON のときのみ fold ループ内で上記TEを計算し `X_tr`/`X_val`/`X_tst` に列追加する
   (`num_col_names` は `cat_col_names` 以外の全列として自動判定されるため、追加列は自動的に
   `NumericalPreprocessor`(median_center → robust_scale → smooth_clip)を通る = スケール整合は
@@ -61,7 +61,7 @@ CPU競合で完走せず、かつ RealMLP は列追加コストが高い(PBLD em
 
 ### GBDT3種との順位相関(アンサンブル価値の確認)
 
-`04_fe_run_realmlp.py` 内の自動チェックは `oof/oof_lgbm.npy` を参照するが、これは
+`04_train_and_evaluate_realmlp.py` 内の自動チェックは `oof/oof_lgbm.npy` を参照するが、これは
 **LightGBM の Triple TE 採用前の古い成果物(OOF 0.94535)** であり、公式の最終版は
 `oof_lgbm_tte_dig.npy`(OOF 0.94587)である(LGBM Lead のファイル命名上の見落としと思われる。
 自分のファイルではないため修正はせず、指揮官へ申告のみ)。正しいファイルで再計算した結果:
@@ -130,7 +130,7 @@ step4: +catboost            -> 0.94619
   (不採用のため)。
 - 実験結果は別名で保存: `oof/oof_realmlp_te_highcard.npy`, `oof/pred_realmlp_te_highcard.npy`,
   `submit/submission_realmlp_te_highcard.csv`(負の結果の記録として残す。`oof_realmlp_e6.npy` と同様の扱い)。
-- コード変更(`03_fe_realmlp.py` の新規関数、`04_fe_run_realmlp.py` の `--exact-te` フラグ)は
+- コード変更(`03_feature_engineering_realmlp.py` の新規関数、`04_train_and_evaluate_realmlp.py` の `--exact-te` フラグ)は
   **デフォルト無効**のまま残す。フラグを付けない限り既存動作と完全に同一であることを確認済みなので、
   「元に戻す」作業は不要(オプトイン方式のため常に安全にロールバック済み状態)。
 - `ensemble_hillclimb.py` を実行した副作用として `submit/submission_hillclimb.csv` が

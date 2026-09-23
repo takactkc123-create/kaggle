@@ -24,13 +24,13 @@ EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二�
 | # | 工程 | ファイル | 出力 |
 |---|---|---|---|
 | ① | EDA | `src/01_eda.py` | `datacheck/*.png` |
-| ② | Baseline | `src/02_bl_<model>.py` | `submit/submission_<model>.csv` |
-| ③ | FE定義 | `src/03_fe_<model>.py` / `src/03_fe_all.py` | (関数のみ。実行しない) |
-| ④ | FE実行 | `src/04_fe_run_<model>.py` | `oof/` `submit/` `importance/` |
-| ⑤ | HPO | `src/05_hpo.py` | `hpo_results.csv` |
-| ⑥ | Ensemble | `src/06_ensemble_hillclimb.py` | `submit/submission_hillclimb.csv` |
-| ⑦ | 評価 | `src/07_compare_oof.py` | 採否判定(paired DeLong 検定) |
-| — | 補助 | `src/feature_dump.py` | 生成された列名を JSON に書き出す共通ヘルパー |
+| ② | Baseline | `src/02_baseline_<model>.py` | `submit/submission_<model>.csv` |
+| ③ | FE定義 | `src/03_feature_engineering_<model>.py` / `src/03_feature_engineering_all.py` | (関数のみ。実行しない) |
+| ④ | FE実行 | `src/04_train_and_evaluate_<model>.py` | `oof/` `submit/` `importance/` |
+| ⑤ | HPO | `src/05_hyperparameter_tuning.py` | `hyperparameter_tuning_results.csv` |
+| ⑥ | Ensemble | `src/06_ensemble_hill_climbing.py` | `submit/submission_hillclimb.csv` |
+| ⑦ | 評価 | `src/07_compare_predictions.py` | 採否判定(paired DeLong 検定) |
+| — | 補助 | `src/feature_catalog.py` | 生成された列名を JSON に書き出す共通ヘルパー |
 | — | Agents | `.claude/agents/*.md` | `docs/fe_results_*.md` |
 
 ---
@@ -63,9 +63,9 @@ uv run src/01_eda.py
 ## ② Baseline
 
 ```bash
-uv run src/02_bl_lgbm.py
-uv run src/02_bl_xgb.py
-uv run src/02_bl_catboost.py
+uv run src/02_baseline_lgbm.py
+uv run src/02_baseline_xgb.py
+uv run src/02_baseline_catboost.py
 ```
 
 数値7列 + カテゴリ6列をエンコーディングせず、各ライブラリのネイティブなカテゴリ対応に渡しただけの構成。
@@ -87,11 +87,11 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 
 | モデル | FE関数 | 実行スクリプト |
 |---|---|---|
-| LightGBM | `src/03_fe_lgbm.py` | `src/04_fe_run_lgbm.py` |
-| XGBoost | `src/03_fe_xgb.py` | `src/04_fe_run_xgb.py` |
-| CatBoost | `src/03_fe_catboost.py` | `src/04_fe_run_catboost.py` |
-| RealMLP | `src/03_fe_realmlp.py` | `src/04_fe_run_realmlp.py` |
-| (横断) | `src/03_fe_all.py`(全モデルのFEを集約したカタログ) | — |
+| LightGBM | `src/03_feature_engineering_lgbm.py` | `src/04_train_and_evaluate_lgbm.py` |
+| XGBoost | `src/03_feature_engineering_xgb.py` | `src/04_train_and_evaluate_xgb.py` |
+| CatBoost | `src/03_feature_engineering_catboost.py` | `src/04_train_and_evaluate_catboost.py` |
+| RealMLP | `src/03_feature_engineering_realmlp.py` | `src/04_train_and_evaluate_realmlp.py` |
+| (横断) | `src/03_feature_engineering_all.py`(全モデルのFEを集約したカタログ) | — |
 
 **効いたもの**
 - **厳密値 Target Encoding**(各モデル +0.003 前後、最大の改善要因)。数値列もビン分割せず値のままキーにする
@@ -103,7 +103,7 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 **効かなかったもの**: 四則演算、交互作用TE(2〜13列すべて)、行フィンガープリント、元データの追加。
 各施策の詳細(なぜ試したか / 期待した効果 / 結果の考察)は `docs/fe_results_*.md` を参照。
 
-> `src/03_fe_<model>.py` は**関数の定義のみ**、`src/04_fe_run_<model>.py` が**実行**という分担。
+> `src/03_feature_engineering_<model>.py` は**関数の定義のみ**、`src/04_train_and_evaluate_<model>.py` が**実行**という分担。
 > この分離により、同じ関数を別の検証スクリプトからも再利用できる。
 
 ## ⑤ HPO
@@ -122,15 +122,15 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 ### 探索のフレーム
 
 ```bash
-uv run src/05_hpo.py lgbm --estimate          # 試行一覧と所要時間の見積もりだけ表示
-uv run src/05_hpo.py lgbm                     # 実行(1本ずつ順番に)
-uv run src/05_hpo.py lgbm --only num_leaves   # 特定の軸だけ
-uv run src/05_hpo.py --report                 # これまでの結果を表示
+uv run src/05_hyperparameter_tuning.py lgbm --estimate          # 試行一覧と所要時間の見積もりだけ表示
+uv run src/05_hyperparameter_tuning.py lgbm                     # 実行(1本ずつ順番に)
+uv run src/05_hyperparameter_tuning.py lgbm --only num_leaves   # 特定の軸だけ
+uv run src/05_hyperparameter_tuning.py --report                 # これまでの結果を表示
 ```
 
-`src/05_hpo.py` は**学習コードを持たない**。既存の `04_fe_run_<model>.py` を引数違いで
+`src/05_hyperparameter_tuning.py` は**学習コードを持たない**。既存の `04_train_and_evaluate_<model>.py` を引数違いで
 呼ぶだけにして、収束設定や FE 構成が本番とズレないようにしている。解説は
-`notebooks/05_hpo.ipynb`。
+`notebooks/05_hyperparameter_tuning.ipynb`。
 
 | モデル | 試行数 | 1本あたり | 合計 | 優先度 |
 |---|---|---|---|---|
@@ -144,18 +144,18 @@ uv run src/05_hpo.py --report                 # これまでの結果を表示
 ### 現行ベストの再現コマンド
 
 ```bash
-uv run src/04_fe_run_lgbm.py --patterns base,te1,cnt1,digit,sk --smooths auto,10,100 \
+uv run src/04_train_and_evaluate_lgbm.py --patterns base,te1,cnt1,digit,sk --smooths auto,10,100 \
   --max_bin 1024 --feature_fraction 0.3 --max_depth 5 \
   --folds 5 --learning_rate 0.03 --n_estimators 8000 --early_stopping 200 --n_jobs 7 --save --tag lgbm
 
-uv run src/04_fe_run_xgb.py --pattern tte_sk_dig --max-bin 1024 \
+uv run src/04_train_and_evaluate_xgb.py --pattern tte_sk_dig --max-bin 1024 \
   --set-param colsample_bytree=0.3 --set-param max_depth=5 \
   --folds 5 --learning-rate 0.03 --n-estimators 8000 --early-stopping 200 --n-jobs 7 --save --out-suffix ""
 
-uv run src/04_fe_run_catboost.py --fe te_all,catify,digits,skeys,te3 \
+uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify,digits,skeys,te3 \
   --folds 5 --iters 1000 --lr 0.06 --fast --border 64 --hc-border 1024 --threads 7 --save
 
-uv run src/04_fe_run_realmlp.py --folds 5 --threads 7 --tag realmlp   # epochs は 2 から変えないこと
+uv run src/04_train_and_evaluate_realmlp.py --folds 5 --threads 7 --tag realmlp   # epochs は 2 から変えないこと
 ```
 
 | モデル | OOF AUC | 備考 |
@@ -171,7 +171,7 @@ uv run src/04_fe_run_realmlp.py --folds 5 --threads 7 --tag realmlp   # epochs �
 ## ⑥ Ensemble
 
 ```bash
-uv run src/06_ensemble_hillclimb.py
+uv run src/06_ensemble_hill_climbing.py
 ```
 
 `oof/oof_<name>.npy` と `oof/pred_<name>.npy` の組をすべて候補として読み込み、rank 正規化した予測を
@@ -188,7 +188,7 @@ hill climbing で足し合わせる。選ばれた回数がそのまま重みに
 > CV +0.000009(z=+1.57、有意でない)の構成を提出したところ、LB では -0.00002 と逆に動いた。
 > **必ず ⑦ の DeLong 検定で有意性を確認してから提出する。**
 
-> `06_ensemble_hillclimb.py` は実行のたびに `submit/submission_hillclimb.csv` を上書きする。
+> `06_ensemble_hill_climbing.py` は実行のたびに `submit/submission_hillclimb.csv` を上書きする。
 > 不採用の実験結果は `experiments_rejected/` に退避して候補から外すこと。
 
 ### 提出
@@ -214,8 +214,8 @@ Claude Code のサブエージェントとして担当を置いている。定�
 ## ⑦ 評価(paired DeLong 検定)
 
 ```bash
-uv run src/07_compare_oof.py lgbm lgbm_shallow      # 2つを比較
-uv run src/07_compare_oof.py --all realmlp          # 全候補と比較
+uv run src/07_compare_predictions.py lgbm lgbm_shallow      # 2つを比較
+uv run src/07_compare_predictions.py --all realmlp          # 全候補と比較
 ```
 
 学習は不要。保存済みの `oof/*.npy` を読むだけ。全モデルが fold 分割を `random_state=42` で固定して
@@ -235,16 +235,16 @@ z=+8.48 で誤差でないことが確定した。
 
 ### 使っている特徴量の列名を確認する
 
-`--dump-features` を付けると、**fold 1 の学習行列を組み上げた直後に列名を `docs/features_<tag>.json` へ書いて終了する**(学習しない)。本番と同じコードパスを通るので列の取りこぼしがない。結果は `notebooks/03_fe.ipynb` が読んで表示する。
+`--dump-features` を付けると、**fold 1 の学習行列を組み上げた直後に列名を `docs/features_<tag>.json` へ書いて終了する**(学習しない)。本番と同じコードパスを通るので列の取りこぼしがない。結果は `notebooks/03_feature_engineering.ipynb` が読んで表示する。
 
 ```bash
-uv run src/04_fe_run_lgbm.py --patterns base,te1,cnt1,digit,sk --smooths auto,10,100 \
+uv run src/04_train_and_evaluate_lgbm.py --patterns base,te1,cnt1,digit,sk --smooths auto,10,100 \
   --sample 0.02 --folds 1 --dump-features --tag lgbm
-uv run src/04_fe_run_xgb.py --pattern tte_sk_dig --sample 0.02 --folds 1 \
+uv run src/04_train_and_evaluate_xgb.py --pattern tte_sk_dig --sample 0.02 --folds 1 \
   --dump-features --out-suffix ""
-uv run src/04_fe_run_catboost.py --fe te_all,catify,digits,skeys,te3 --folds 5 \
+uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify,digits,skeys,te3 --folds 5 \
   --rows 15000 --fast --dump-features --tag catboost
-uv run src/04_fe_run_realmlp.py --folds 1 --subsample 0.02 --dump-features --tag realmlp
+uv run src/04_train_and_evaluate_realmlp.py --folds 1 --subsample 0.02 --dump-features --tag realmlp
 ```
 
 **FE を変えたら再生成すること。** JSON は生成物だが `data/` を含めていないためクローン先では作り直せない。ノートブックの表示元になるのでリポジトリに含めている。
@@ -259,10 +259,10 @@ uv run src/04_fe_run_realmlp.py --folds 1 --subsample 0.02 --dump-features --tag
 | Notebook | 対応する工程 | 内容 |
 |---|---|---|
 | `notebooks/01_eda.ipynb` | ① | データの素性、カーディナリティ、値ごとの購入率 |
-| `notebooks/02_bl.ipynb` | ② | 3モデルのベースライン(共通の CV ループ) |
-| `notebooks/03_fe.ipynb` | ③ | FE 関数カタログ + **各モデルが最終的に使っている列の全一覧** |
-| `notebooks/04_fe_run.ipynb` | ④ | FE を1つずつ足して効果を確認(効かない例も含む) |
-| `notebooks/05_hpo.ipynb` | ⑤ | HPO の設計と所要時間の見積もり + 24試行の結果(すべて誤差か悪化) |
+| `notebooks/02_baseline.ipynb` | ② | 3モデルのベースライン(共通の CV ループ) |
+| `notebooks/03_feature_engineering.ipynb` | ③ | FE 関数カタログ + **各モデルが最終的に使っている列の全一覧** |
+| `notebooks/04_train_and_evaluate.ipynb` | ④ | FE を1つずつ足して効果を確認(効かない例も含む) |
+| `notebooks/05_hyperparameter_tuning.ipynb` | ⑤ | HPO の設計と所要時間の見積もり + 24試行の結果(すべて誤差か悪化) |
 | `notebooks/06_ensemble.ipynb` | ⑥⑦ | ブレンドの再現。相関の確認と DeLong 検定による採否判定まで |
 
 Jupyter で開く際は、カーネルに **`Python (kaggle 2609)`**(または `.venv` の Python)を選ぶこと。

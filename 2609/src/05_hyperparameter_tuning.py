@@ -1,19 +1,19 @@
 """④ HPO — ハイパーパラメータ探索のフレーム。
 
 設計方針:
-- **学習コードは書かない。** 既存の `04_fe_run_<model>.py` を引数違いで呼ぶだけにする。
+- **学習コードは書かない。** 既存の `04_train_and_evaluate_<model>.py` を引数違いで呼ぶだけにする。
   収束設定(lr 引き下げ + early stopping)や FE 構成を本番とズラさないため。
 - **1本ずつ順番に実行する。** 8コア環境で並列にすると CPU を取り合って完走しない。
 - **実行前に必ず所要時間を見積もる。** `--estimate` で試行数 × 実測の1本あたり時間を出す。
-- 判定は AUC の目視ではなく **paired DeLong 検定**(`07_compare_oof.py`)で行う。
+- 判定は AUC の目視ではなく **paired DeLong 検定**(`07_compare_predictions.py`)で行う。
 
 使い方:
-    uv run src/05_hpo.py lgbm --estimate          # 試行一覧と所要時間の見積もりだけ表示
-    uv run src/05_hpo.py lgbm                     # 実行(1本ずつ順番に)
-    uv run src/05_hpo.py lgbm --only num_leaves   # 特定の軸だけ
-    uv run src/05_hpo.py --report                 # これまでの結果を表で表示
+    uv run src/05_hyperparameter_tuning.py lgbm --estimate          # 試行一覧と所要時間の見積もりだけ表示
+    uv run src/05_hyperparameter_tuning.py lgbm                     # 実行(1本ずつ順番に)
+    uv run src/05_hyperparameter_tuning.py lgbm --only num_leaves   # 特定の軸だけ
+    uv run src/05_hyperparameter_tuning.py --report                 # これまでの結果を表で表示
 
-結果は `hpo_results.csv` に追記される。
+結果は `hyperparameter_tuning_results.csv` に追記される。
 """
 
 import argparse
@@ -24,12 +24,12 @@ import re
 import subprocess
 import time
 
-RESULTS = "hpo_results.csv"
+RESULTS = "hyperparameter_tuning_results.csv"
 
 # 1本あたりの実測時間(秒)。フル5-fold・7スレッド。見積もりに使う。
 RUNTIME = {"lgbm": 250, "xgb": 650, "catboost": 1500}   # catboost は本番設定(iters=1000+fast)の実測。depth を上げる試行は 1.5〜2倍かかる
 
-# 各モデルの現行ベスト(比較の基準)。07_compare_oof.py に渡す OOF 名も兼ねる。
+# 各モデルの現行ベスト(比較の基準)。07_compare_predictions.py に渡す OOF 名も兼ねる。
 BASELINE = {"lgbm": 0.946095, "xgb": 0.946077, "catboost": 0.94589, "realmlp": 0.945888}
 
 # 本番構成の固定部分。ここは探索対象ではない(FE と収束設定)。
@@ -54,9 +54,9 @@ FIXED = {
 }
 
 SCRIPT = {
-    "lgbm": "src/04_fe_run_lgbm.py",
-    "xgb": "src/04_fe_run_xgb.py",
-    "catboost": "src/04_fe_run_catboost.py",
+    "lgbm": "src/04_train_and_evaluate_lgbm.py",
+    "xgb": "src/04_train_and_evaluate_xgb.py",
+    "catboost": "src/04_train_and_evaluate_catboost.py",
 }
 
 # ── 探索空間 ────────────────────────────────────────────────────────────────
@@ -150,7 +150,7 @@ def estimate(model, trials):
     for axis, tag, extra in trials:
         print(f"{axis:18s} {tag:22s} {' '.join(extra)}")
     print("\n※ 1本ずつ順番に実行する(並列にすると CPU を取り合って完走しない)")
-    print("※ 判定は実行後に: uv run src/07_compare_oof.py <baseline> <tag>")
+    print("※ 判定は実行後に: uv run src/07_compare_predictions.py <baseline> <tag>")
 
 
 def append_result(row):
@@ -178,7 +178,7 @@ def run(model, trials):
             datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), model, axis, tag,
             f"{auc:.6f}", f"{diff:+.6f}", f"{sec:.0f}", " ".join(extra),
         ])
-    print(f"\n完了。次は DeLong 検定で判定する:\n  uv run src/07_compare_oof.py {model} --all")
+    print(f"\n完了。次は DeLong 検定で判定する:\n  uv run src/07_compare_predictions.py {model} --all")
 
 
 def report():

@@ -95,7 +95,7 @@ Kaggle のページは JavaScript 描画のため本文が取れないことが�
 ## 遵守事項
 
 - **Kaggle への submit は行わない**(提出判断は指揮官)
-- **モデルのコード(`src/03_fe_*.py` / `src/04_fe_run_*.py`)を勝手に書き換えない。**
+- **モデルのコード(`src/03_feature_engineering_*.py` / `src/04_train_and_evaluate_*.py`)を勝手に書き換えない。**
   提案は `research.md` に書き、実装は指揮官が判断する
 - `Log.md` / `CLAUDE.md` は編集しない
 - **Kaggle の API に過度な負荷をかけない。** 短時間に大量のリクエストを投げない。

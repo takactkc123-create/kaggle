@@ -1,12 +1,12 @@
 """XGBoost training / evaluation script for S6E9.
 
-Imports FE functions from 03_fe_xgb.py, runs StratifiedKFold CV and
+Imports FE functions from 03_feature_engineering_xgb.py, runs StratifiedKFold CV and
 (optionally) writes submission / OOF / importance artifacts.
 
 Usage:
-    uv run 04_fe_run_xgb.py --pattern base
-    uv run 04_fe_run_xgb.py --pattern te_exact --folds 3 --sample 0.3
-    uv run 04_fe_run_xgb.py --pattern final --save
+    uv run 04_train_and_evaluate_xgb.py --pattern base
+    uv run 04_train_and_evaluate_xgb.py --pattern te_exact --folds 3 --sample 0.3
+    uv run 04_train_and_evaluate_xgb.py --pattern final --save
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from sklearn.model_selection import StratifiedKFold
 from xgboost import XGBClassifier
 
 import importlib
-fe = importlib.import_module("03_fe_xgb")
+fe = importlib.import_module("03_feature_engineering_xgb")
 
 TARGET = fe.TARGET
 
@@ -352,8 +352,8 @@ def run_cv(cfg, args):
             X_te = pd.concat([X_test.reset_index(drop=True), te_te.reset_index(drop=True)], axis=1)
 
         if args.dump_features:
-            import feature_dump
-            feature_dump.dump(
+            import feature_catalog
+            feature_catalog.dump(
                 f"xgb{args.out_suffix}", "XGBoost", X_tr.columns,
                 cat_features=[c for c in X_tr.columns
                               if str(X_tr[c].dtype) == "category"],

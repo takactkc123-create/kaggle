@@ -6,8 +6,8 @@ AUC の差の標準誤差を直接求めるので、AUC を別々に眺めるよ
 (ノイズ床 0.00015 -> 0.00003 程度)。
 
 使い方:
-    uv run src/07_compare_oof.py <base> <new> [<new2> ...]
-    uv run src/07_compare_oof.py --all <base>     # base と他の全候補を比較
+    uv run src/07_compare_predictions.py <base> <new> [<new2> ...]
+    uv run src/07_compare_predictions.py --all <base>     # base と他の全候補を比較
 
 <base>/<new> は oof/oof_<name>.npy の <name>、または .npy への直接パス。
 

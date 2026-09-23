@@ -8,9 +8,9 @@
   という分業になる。数値列のスケーリングは学習側 (NumericalPreprocessor) が担当する。
 
 重要な規約:
-- ここには「関数」しか置かない (CLAUDE.md のファイル構成規約)。実行は 04_fe_run_realmlp.py。
+- ここには「関数」しか置かない (CLAUDE.md のファイル構成規約)。実行は 04_train_and_evaluate_realmlp.py。
 - Target Encoding はリーク防止のため fold 内で fit する。ここでは行わない
-  (04_fe_run_realmlp.py 側で sklearn TargetEncoder を fold 内適用)。
+  (04_train_and_evaluate_realmlp.py 側で sklearn TargetEncoder を fold 内適用)。
 - ここで行う factorize / KBins / count encoding は「目的変数を使わない」変換なので
   train 全体で fit してよい (リークしない)。
 """
@@ -189,7 +189,7 @@ def build_features(
 #
 # 背景: GBDT 3種は「13列の厳密値TE + Smooth Keys の Triple TE」で各 +0.003 前後の
 # 改善を得ているが、RealMLP には combo TE (income×RangeAnxiety, age×RangeAnxiety の
-# 2列のみ, 04_fe_run_realmlp.py 側で適用) しか入っていなかった。
+# 2列のみ, 04_train_and_evaluate_realmlp.py 側で適用) しか入っていなかった。
 # fe_results_all.md の分析により、54列一括投入はCPU競合で完走せずコストも高いため、
 # 効果源が確実な高カーディナリティ2列 + その Smooth Keys 3本 = 5キー に絞り込む。
 # smooth を auto/10/100 の Triple で同時投入 -> 5キー × 3 smooth = 15列。

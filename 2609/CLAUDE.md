@@ -84,11 +84,11 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 
 | 担当 | 定義ファイル | FE関数群 | 実行スクリプト |
 |---|---|---|---|
-| LightGBM Lead | `.claude/agents/lgbm-lead.md` | `03_fe_lgbm.py` | `04_fe_run_lgbm.py` |
-| XGBoost Lead | `.claude/agents/xgb-lead.md` | `03_fe_xgb.py` | `04_fe_run_xgb.py` |
-| CatBoost Lead | `.claude/agents/catboost-lead.md` | `03_fe_catboost.py` | `04_fe_run_catboost.py` |
-| RealMLP Lead | `.claude/agents/realmlp-lead.md` | `03_fe_realmlp.py` | `04_fe_run_realmlp.py` |
-| **FE Lead**(競争しない) | `.claude/agents/fe-lead.md` | `03_fe_all.py` | モデル間の取りこぼしを横展開 |
+| LightGBM Lead | `.claude/agents/lgbm-lead.md` | `03_feature_engineering_lgbm.py` | `04_train_and_evaluate_lgbm.py` |
+| XGBoost Lead | `.claude/agents/xgb-lead.md` | `03_feature_engineering_xgb.py` | `04_train_and_evaluate_xgb.py` |
+| CatBoost Lead | `.claude/agents/catboost-lead.md` | `03_feature_engineering_catboost.py` | `04_train_and_evaluate_catboost.py` |
+| RealMLP Lead | `.claude/agents/realmlp-lead.md` | `03_feature_engineering_realmlp.py` | `04_train_and_evaluate_realmlp.py` |
+| **FE Lead**(競争しない) | `.claude/agents/fe-lead.md` | `03_feature_engineering_all.py` | モデル間の取りこぼしを横展開 |
 | **Research Lead**(競争しない) | `.claude/agents/research-lead.md` | — | Kaggle の Code / Discussion から新しい手を持ち込む |
 
 支援役2名(FE Lead / Research Lead)は自分のスコアを持たず、**他モデルが伸びたかで評価する**。
@@ -96,7 +96,7 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 ### 競争ルール
 
 - 各リーダーは**自分のモデルのCV AUCで1位を目指して競う**。
-- ただし**他モデルの足を引っ張る行為は禁止**。他モデルのファイル(`03_fe_*.py` / `04_fe_run_*.py` で
+- ただし**他モデルの足を引っ張る行為は禁止**。他モデルのファイル(`03_feature_engineering_*.py` / `04_train_and_evaluate_*.py` で
   自分の管轄外のもの)を編集・削除しない。共有ファイル(`Log.md` / `CLAUDE.md`)は追記のみ。
 - 有効だった知見は Log.md を通じて共有してよい(**知見の共有は推奨、実装の横取りは各自の責任で**)。
 - **審査は単体AUCだけでなくアンサンブル貢献度(他モデルOOFとの非相関性)も含む。**
@@ -111,38 +111,38 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 
 ```
 01_eda.py                 # ① EDA
-02_bl_<model>.py          # ② ベースライン
-03_fe_<model>.py          # ③ 特徴量エンジニアリング「関数」の定義のみ。実行コードを書かない
-04_fe_run_<model>.py      # ④ ③を import → CV学習 → 評価 → 成果物出力
-05_hpo.py                 # ⑤ HPO(学習コードを持たず ④ を引数違いで呼ぶだけ)
-06_ensemble_hillclimb.py  # ⑥ 貪欲法でブレンド + 採用モデル間の相関を出力
-07_compare_oof.py         # ⑦ paired DeLong 検定(学習しない。保存済みOOFを読むだけ)
-feature_dump.py           # 補助。工程ではないので番号なし
+02_baseline_<model>.py          # ② ベースライン
+03_feature_engineering_<model>.py          # ③ 特徴量エンジニアリング「関数」の定義のみ。実行コードを書かない
+04_train_and_evaluate_<model>.py      # ④ ③を import → CV学習 → 評価 → 成果物出力
+05_hyperparameter_tuning.py                 # ⑤ HPO(学習コードを持たず ④ を引数違いで呼ぶだけ)
+06_ensemble_hill_climbing.py  # ⑥ 貪欲法でブレンド + 採用モデル間の相関を出力
+07_compare_predictions.py         # ⑦ paired DeLong 検定(学習しない。保存済みOOFを読むだけ)
+feature_catalog.py           # 補助。工程ではないので番号なし
 submit/                   # submission_<model>.csv
 oof/                      # oof_<model>.npy, pred_<model>.npy(アンサンブル用・必須)
 importance/               # importance_<model>.png(feature importance 棒グラフ)
 docs/features_<tag>.json  # 各モデルが使っている列名(--dump-features で生成)
 ```
 
-- `04_fe_run_<model>.py` に `--dump-features` を付けると、**fold 1 の学習行列を組み上げた直後に
+- `04_train_and_evaluate_<model>.py` に `--dump-features` を付けると、**fold 1 の学習行列を組み上げた直後に
   列名を `docs/features_<tag>.json` へ書いて終了する**(学習しない)。本番と同じコードパスを通るので
   列の取りこぼしがない。**FE を変えたら必ず再生成すること**(コマンドは README 参照)。
   現行の列数は LightGBM 92 / XGBoost 93 / CatBoost 80 / RealMLP 38。
 
-- **`03_fe_<model>.py` は採用した関数だけを置く場所ではない。** 検証して捨てた施策も
-  再検証しないための記録として残す。どれが本番で生きているかは `src/feature_dump.py` の
+- **`03_feature_engineering_<model>.py` は採用した関数だけを置く場所ではない。** 検証して捨てた施策も
+  再検証しないための記録として残す。どれが本番で生きているかは `src/feature_catalog.py` の
   **`FUNC_STATUS`** が持つ(現在 〇28 / ✖28 / 補助8 の計64関数)。
   **FEを採用・不採用にしたらこの表も更新すること。**
   `fd.verify_status()` が `docs/features_*.json` と突き合わせて矛盾を検出する。
 
-- `read_csv` までのフローは `02_bl_*.py` と同一にする(data/train.csv, data/test.csv)。
+- `read_csv` までのフローは `02_baseline_*.py` と同一にする(data/train.csv, data/test.csv)。
 - CVは **StratifiedKFold(n_splits=5, shuffle=True, random_state=42)** で全モデル統一。
   fold分割を揃えないとOOF同士のアンサンブル・相関評価ができないため、**変更禁止**。
 - 目的変数は `(train["Will_Buy_EV"] == "Yes").astype(int)`。
 
 ## 採否基準(2026-09-21 更新: paired DeLong 検定に移行)
 
-**AUC を目視で比べるのをやめ、`src/07_compare_oof.py` の paired DeLong 検定で判定する。**
+**AUC を目視で比べるのをやめ、`src/07_compare_predictions.py` の paired DeLong 検定で判定する。**
 fold 分割が全モデル共通(`random_state=42`)なので、2つの予測の差から共通のノイズが差し引きで消え、
 判別できる下限が **0.00015 → 0.00003** と約5倍細かくなる。
 

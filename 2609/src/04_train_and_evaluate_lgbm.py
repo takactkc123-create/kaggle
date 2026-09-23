@@ -1,15 +1,15 @@
 """LightGBM CV runner for S6E9.
 
-Imports the FE functions from `03_fe_lgbm.py`, applies the requested FE patterns
+Imports the FE functions from `03_feature_engineering_lgbm.py`, applies the requested FE patterns
 (all target-based encoders are fitted strictly inside the outer fold), runs
 StratifiedKFold(n_splits=5, shuffle=True, random_state=42) and - with --save -
 writes submission / OOF / importance artefacts.
 
 Examples
 --------
-    uv run 04_fe_run_lgbm.py --patterns base --folds 3            # screening
-    uv run 04_fe_run_lgbm.py --patterns base,te1                  # full 5-fold
-    uv run 04_fe_run_lgbm.py --patterns base,te1,te2 --save       # artefacts
+    uv run 04_train_and_evaluate_lgbm.py --patterns base --folds 3            # screening
+    uv run 04_train_and_evaluate_lgbm.py --patterns base,te1                  # full 5-fold
+    uv run 04_train_and_evaluate_lgbm.py --patterns base,te1,te2 --save       # artefacts
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 
 import importlib
-fe = importlib.import_module("03_fe_lgbm")
+fe = importlib.import_module("03_feature_engineering_lgbm")
 
 N_SPLITS = 5  # fold definition is fixed across all three models - do not change
 SEED = 42
@@ -236,8 +236,8 @@ def main():
             X_te = pd.concat([X_te.reset_index(drop=True), te_te.reset_index(drop=True)], axis=1)
 
         if args.dump_features:
-            import feature_dump
-            feature_dump.dump(
+            import feature_catalog
+            feature_catalog.dump(
                 args.tag, "LightGBM", X_tr.columns,
                 cat_features=[c for c in X_tr.columns
                               if str(X_tr[c].dtype) == "category"],

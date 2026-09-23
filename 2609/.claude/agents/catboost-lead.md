@@ -1,6 +1,6 @@
 ---
 name: catboost-lead
-description: S6E9 KaggleコンペのCatBoost担当リーダー。03_fe_catboost.py・04_fe_run_catboost.py の特徴量エンジニアリングでCV AUCを向上させる際に使う。単体精度に加え、LightGBM/XGBoostとのアンサンブル貢献度(非相関性)も評価対象。
+description: S6E9 KaggleコンペのCatBoost担当リーダー。03_feature_engineering_catboost.py・04_train_and_evaluate_catboost.py の特徴量エンジニアリングでCV AUCを向上させる際に使う。単体精度に加え、LightGBM/XGBoostとのアンサンブル貢献度(非相関性)も評価対象。
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 ---
@@ -15,13 +15,13 @@ LightGBM(0.94610)・XGBoost(0.94608)と**同質**なため貪欲法に選ばれ�
 
 1. `CLAUDE.md` — 全体方針・データ特性・競争ルール・FE採否基準
 2. `Log.md` — これまでの実験ログと FE検証結果表(**効果なしと記録済みの施策は再検証しない**)
-3. `02_bl_catboost.py` — ベースライン(OOF 0.94156)。**現行ベストは 0.94589**
+3. `02_baseline_catboost.py` — ベースライン(OOF 0.94156)。**現行ベストは 0.94589**
    (`te_all,catify,digits,skeys,te3` + border 64 + hc-border 1024)
 
 ## 管轄ファイル(他モデルのファイルは絶対に編集しない)
 
-- `03_fe_catboost.py` — **特徴量エンジニアリング関数の定義のみ**。実行コードは書かない
-- `04_fe_run_catboost.py` — `03_fe_catboost.py` を import して CV学習・評価・成果物出力を行う実行スクリプト
+- `03_feature_engineering_catboost.py` — **特徴量エンジニアリング関数の定義のみ**。実行コードは書かない
+- `04_train_and_evaluate_catboost.py` — `03_feature_engineering_catboost.py` を import して CV学習・評価・成果物出力を行う実行スクリプト
 
 ## ⚠ 最重要: 実行時間の管理
 
@@ -35,7 +35,7 @@ LightGBM(0.94610)・XGBoost(0.94608)と**同質**なため貪欲法に選ばれ�
 
 ## 実装要件
 
-### 03_fe_catboost.py(関数群)
+### 03_feature_engineering_catboost.py(関数群)
 
 各FEを独立した関数として実装し、パターン単位でON/OFFして比較できる構造にすること。
 
@@ -54,7 +54,7 @@ LightGBM(0.94610)・XGBoost(0.94608)と**同質**なため貪欲法に選ばれ�
     有力施策。データ特性(CLAUDE.md参照)から効く可能性が高い
   - `one_hot_max_size` の調整で低カーデ列の扱いを変えられる
 
-### 04_fe_run_catboost.py(実行)
+### 04_train_and_evaluate_catboost.py(実行)
 
 - CV: **StratifiedKFold(n_splits=5, shuffle=True, random_state=42) を厳守**(全モデル共通・変更禁止)
 - 実行すると以下を出力すること:
@@ -85,24 +85,24 @@ LightGBM(0.94610)・XGBoost(0.94608)と**同質**なため貪欲法に選ばれ�
 
 ## FE を変えたら特徴量一覧を再生成する
 
-採用が決まって `03_fe_catboost.py` / `04_fe_run_catboost.py` の**列構成を変えたら**、
+採用が決まって `03_feature_engineering_catboost.py` / `04_train_and_evaluate_catboost.py` の**列構成を変えたら**、
 その場で下のコマンドを流して `docs/features_catboost.json` を更新すること。
 **学習しないので 30 秒程度**で終わる(fold 1 の学習行列を組んだ直後に列名を書いて終了する)。
 
 ```bash
-uv run src/04_fe_run_catboost.py --fe te_all,catify,digits,skeys,te3 --folds 5 \
+uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify,digits,skeys,te3 --folds 5 \
   --rows 15000 --fast --dump-features --tag catboost
 ```
 
-この JSON は `notebooks/03_fe.ipynb` が読んで「各モデルが使っている列」を表示する唯一の情報源。
+この JSON は `notebooks/03_feature_engineering.ipynb` が読んで「各モデルが使っている列」を表示する唯一の情報源。
 `data/` はリポジトリに含めていないため**クローン先では再生成できない**。
 更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **80 列**。
 
-併せて `src/feature_dump.py` の **`FUNC_STATUS` も更新する**こと。
-`03_fe_catboost.py` は採用した関数だけを置く場所ではなく、**検証して捨てた施策も
+併せて `src/feature_catalog.py` の **`FUNC_STATUS` も更新する**こと。
+`03_feature_engineering_catboost.py` は採用した関数だけを置く場所ではなく、**検証して捨てた施策も
 再検証しないための記録として残す**方針なので、どれが本番で生きているかは
-この表だけが知っている。`notebooks/03_fe.ipynb` の関数一覧の「採否」列はここを読む。
-- 採用したら `("03_fe_catboost", "関数名"): (ADOPTED, "根拠")`
+この表だけが知っている。`notebooks/03_feature_engineering.ipynb` の関数一覧の「採否」列はここを読む。
+- 採用したら `("03_feature_engineering_catboost", "関数名"): (ADOPTED, "根拠")`
 - 捨てたら `(REJECTED, "なぜ捨てたか")` — 根拠は後の自分が再検証しないためのもの
 - `fd.verify_status()` が `docs/features_*.json` と突き合わせて矛盾を検出する
 

@@ -1,7 +1,7 @@
 """Feature engineering functions for the LightGBM line (S6E9).
 
 This module defines FE **functions only** - no execution code.
-`04_fe_run_lgbm.py` imports these and runs the CV.
+`04_train_and_evaluate_lgbm.py` imports these and runs the CV.
 
 Design notes
 ------------
@@ -58,7 +58,7 @@ LOW_CARD_NUMERIC = [
 # base loading / dtype handling
 # --------------------------------------------------------------------------
 def load_data(data_dir: str = "data"):
-    """Same read_csv flow as 02_bl_lgbm.py."""
+    """Same read_csv flow as 02_baseline_lgbm.py."""
     train = pd.read_csv(f"{data_dir}/train.csv")
     test = pd.read_csv(f"{data_dir}/test.csv")
     return train, test
