@@ -31,5 +31,5 @@ fe_results_lookup.md
 docs/reference_URL.md
 .claude/agents/lookup-transformer-lead.md
 
-# メンターからのフィードバック等、他者とのやり取りを含むため非公開
+# プロンプト内に参照があるため非公開
 prompt.md
