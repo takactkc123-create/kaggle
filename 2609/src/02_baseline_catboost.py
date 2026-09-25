@@ -1,53 +1,61 @@
+"""ベースライン(CatBoost)。
+
+EDA の施策1「カテゴリ列を落とさずモデルに渡す」を、ここで検証する。
+  1. 数値列のみ(7列)
+  2. 数値列 + カテゴリ列(13列)。カテゴリはエンコードせず、文字列のまま CatBoost の cat_features に渡す
+どちらもデフォルトパラメータ・同じ fold 分割で学習し、OOF AUC を比べる。
+"""
+import os
+
 import numpy as np
 import pandas as pd
 from catboost import CatBoostClassifier
-from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import StratifiedKFold
 
 train = pd.read_csv("data/train.csv")
 test = pd.read_csv("data/test.csv")
 
 target = "Will_Buy_EV"
-numeric_cols = [
-    c for c in train.select_dtypes(include=[np.number]).columns if c != "id"
-]
-categorical_cols = [
-    c for c in train.select_dtypes(include=["object", "string"]).columns if c != target
-]
-feature_cols = numeric_cols + categorical_cols
+numeric_cols = [c for c in train.select_dtypes(include=[np.number]).columns if c != "id"]
+categorical_cols = [c for c in train.columns if c not in numeric_cols + ["id", target]]
 print("numeric features:", numeric_cols)
 print("categorical features:", categorical_cols)
 
-X = train[feature_cols]
 y = (train[target] == "Yes").astype(int)
-X_test = test[feature_cols]
+skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
-n_splits = 5
-skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
-oof_pred = np.zeros(len(train))
-test_pred = np.zeros(len(test))
 
-for fold, (train_idx, valid_idx) in enumerate(skf.split(X, y)):
-    X_train, y_train = X.iloc[train_idx], y.iloc[train_idx]
-    X_valid, y_valid = X.iloc[valid_idx], y.iloc[valid_idx]
+def run_cv(feature_cols, cat_cols):
+    """5-fold で学習し、OOF 予測と test 予測(fold 平均)を返す。"""
+    X, X_test = train[feature_cols], test[feature_cols]
+    oof_pred = np.zeros(len(train))
+    test_pred = np.zeros(len(test))
+    for fold, (train_idx, valid_idx) in enumerate(skf.split(X, y)):
+        model = CatBoostClassifier(random_state=42, verbose=False, allow_writing_files=False)
+        model.fit(X.iloc[train_idx], y.iloc[train_idx], cat_features=cat_cols)
+        oof_pred[valid_idx] = model.predict_proba(X.iloc[valid_idx])[:, 1]
+        test_pred += model.predict_proba(X_test)[:, 1] / skf.n_splits
+        print(f"  fold {fold} AUC: {roc_auc_score(y.iloc[valid_idx], oof_pred[valid_idx]):.5f}")
+    return oof_pred, test_pred
 
-    model = CatBoostClassifier(random_state=42, verbose=False)
-    model.fit(X_train, y_train, cat_features=categorical_cols)
 
-    oof_pred[valid_idx] = model.predict_proba(X_valid)[:, 1]
-    test_pred += model.predict_proba(X_test)[:, 1] / n_splits
+print("\n[1] 数値列のみ")
+oof_num, _ = run_cv(numeric_cols, [])
+auc_num = roc_auc_score(y, oof_num)
+print(f"OOF AUC: {auc_num:.5f}")
 
-    fold_auc = roc_auc_score(y_valid, oof_pred[valid_idx])
-    print(f"fold {fold} AUC: {fold_auc:.5f}")
+print("\n[2] 数値列 + カテゴリ列(施策1)")
+oof_all, test_all = run_cv(numeric_cols + categorical_cols, categorical_cols)
+auc_all = roc_auc_score(y, oof_all)
+print(f"OOF AUC: {auc_all:.5f}")
 
-oof_auc = roc_auc_score(y, oof_pred)
-print(f"OOF AUC: {oof_auc:.5f}")
+print("\n=== CatBoost ベースラインの比較 ===")
+print(f"数値列のみ           : {auc_num:.5f}")
+print(f"数値列 + カテゴリ列  : {auc_all:.5f}  (差 {auc_all - auc_num:+.5f})")
 
-submit_dir = "submit"
-import os
-
-os.makedirs(submit_dir, exist_ok=True)
-
-submission = pd.DataFrame({"id": test["id"], target: test_pred})
-submission.to_csv(f"{submit_dir}/submission_catboost.csv", index=False)
-print(f"saved {submit_dir}/submission_catboost.csv")
+# 本番モデルの提出ファイル(submission_<model>.csv)と名前がぶつからないよう baseline を付ける
+os.makedirs("submit", exist_ok=True)
+path = "submit/submission_baseline_catboost.csv"
+pd.DataFrame({"id": test["id"], target: test_all}).to_csv(path, index=False)
+print(f"saved {path}")
