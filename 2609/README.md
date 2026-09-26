@@ -235,7 +235,7 @@ z=+8.48 で誤差でないことが確定した。
 
 ### 使っている特徴量の列名を確認する
 
-`--dump-features` を付けると、**fold 1 の学習行列を組み上げた直後に列名を `docs/features_<tag>.json` へ書いて終了する**(学習しない)。本番と同じコードパスを通るので列の取りこぼしがない。結果は `notebooks/03_feature_engineering.ipynb` が読んで表示する。
+`--dump-features` を付けると、**fold 1 の学習行列を組み上げた直後に列名を `docs/features_<tag>.json` へ書いて終了する**(学習しない)。本番と同じコードパスを通るので列の取りこぼしがない。`notebooks/03_feature_engineering.ipynb` は、ノートブックで組み上げた列がこの JSON と一致するかを確かめる。
 
 ```bash
 uv run src/04_train_and_evaluate_lgbm.py --patterns base,te1,cnt1,digit,sk --smooths auto,10,100 \
@@ -260,7 +260,7 @@ uv run src/04_train_and_evaluate_realmlp.py --folds 1 --subsample 0.02 --dump-fe
 |---|---|---|
 | `notebooks/01_eda.ipynb` | ① | データの素性、カーディナリティ、値ごとの購入率 |
 | `notebooks/02_baseline.ipynb` | ② | 3モデルのベースライン(共通の CV ループ) |
-| `notebooks/03_feature_engineering.ipynb` | ③ | FE 関数カタログ + **各モデルが最終的に使っている列の全一覧** |
+| `notebooks/03_feature_engineering.ipynb` | ③ | FE を**全モデル共通 → 一部共通 → モデル別**の順に実行して確かめ、組み上げた列が本番と一致するかを確認。不採用にした関数の一覧も載せる |
 | `notebooks/04_train_and_evaluate.ipynb` | ④ | FE を1つずつ足して効果を確認(効かない例も含む) |
 | `notebooks/05_hyperparameter_tuning.ipynb` | ⑤ | HPO の設計と所要時間の見積もり + 24試行の結果(すべて誤差か悪化) |
 | `notebooks/06_ensemble.ipynb` | ⑥⑦ | ブレンドの再現。相関の確認と DeLong 検定による採否判定まで |

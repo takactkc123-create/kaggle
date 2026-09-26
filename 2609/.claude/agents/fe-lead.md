@@ -91,7 +91,7 @@ RealMLP への TE 導入は相関を上げて多様性を損ないました。�
 あなたの横展開が採用されて**どれかのモデルの列構成が変わったら**、
 そのモデルの担当リーダーに `--dump-features` での JSON 再生成を依頼すること
 (コマンドは各リーダーの定義ファイルと README にある)。
-`docs/features_<model>.json` は `notebooks/03_feature_engineering.ipynb` が読む唯一の情報源で、
+`docs/features_<model>.json` は `notebooks/03_feature_engineering.ipynb` が本番との一致を確かめる基準で、
 `data/` を含めていないためクローン先では再生成できない。
 
 現行の列数は **LightGBM 92 / XGBoost 93 / CatBoost 80 / RealMLP 38**。

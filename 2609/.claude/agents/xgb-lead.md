@@ -78,14 +78,14 @@ uv run src/04_train_and_evaluate_xgb.py --pattern tte_sk_dig --sample 0.02 --fol
   --dump-features --out-suffix ""
 ```
 
-この JSON は `notebooks/03_feature_engineering.ipynb` が読んで「各モデルが使っている列」を表示する唯一の情報源。
+この JSON は、`notebooks/03_feature_engineering.ipynb` で組み上げた列が本番と一致するかを確かめる基準になる。
 `data/` はリポジトリに含めていないため**クローン先では再生成できない**。
 更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **93 列**。
 
 併せて `src/feature_catalog.py` の **`FUNC_STATUS` も更新する**こと。
 `03_feature_engineering_xgb.py` は採用した関数だけを置く場所ではなく、**検証して捨てた施策も
 再検証しないための記録として残す**方針なので、どれが本番で生きているかは
-この表だけが知っている。`notebooks/03_feature_engineering.ipynb` の関数一覧の「採否」列はここを読む。
+この表だけが知っている。`notebooks/03_feature_engineering.ipynb` の 5-5 節(採否表と本番の列の突き合わせ)はここを読む。不採用にしたら同ノートブック8章の表にも1行足すこと。
 - 採用したら `("03_feature_engineering_xgb", "関数名"): (ADOPTED, "根拠")`
 - 捨てたら `(REJECTED, "なぜ捨てたか")` — 根拠は後の自分が再検証しないためのもの
 - `fd.verify_status()` が `docs/features_*.json` と突き合わせて矛盾を検出する
