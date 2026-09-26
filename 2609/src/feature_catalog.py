@@ -123,6 +123,7 @@ FUNC_STATUS = {
     ("03_feature_engineering_lgbm", "add_arithmetic_meaningful"): (REJECTED, "四則演算 -0.00014。打ち止め"),
     ("03_feature_engineering_lgbm", "add_arithmetic_all_pairs"): (REJECTED, "全ペア四則演算。同上"),
     ("03_feature_engineering_lgbm", "add_group_means"):         (REJECTED, "行方向の平均。効果なし"),
+    ("03_feature_engineering_lgbm", "add_subsidy_products"): (REJECTED, "補助金との積。+0.000009 (z=+0.65) で誤差"),
     ("03_feature_engineering_lgbm", "add_digit_features"):      (ADOPTED,  "15列。digit パターン"),
     ("03_feature_engineering_lgbm", "add_smooth_keys"):         (ADOPTED,  "TEキー4本を追加 (sk)"),
     ("03_feature_engineering_lgbm", "count_encode"):            (ADOPTED,  "+0.00083"),
@@ -189,6 +190,7 @@ FUNC_STATUS = {
     ("03_feature_engineering_all", "arithmetic_meaningful"):    (REJECTED, "四則演算。打ち止め"),
     ("03_feature_engineering_all", "interaction_keys"):         (REJECTED, "交互作用キー。全滅"),
     ("03_feature_engineering_all", "cat_pairs"):                (REJECTED, "同上のペア列挙"),
+    ("03_feature_engineering_all", "add_income_neighborhood"): (REJECTED, "年収の近傍統計。GBDT は誤差、RealMLP は単体 +0.000077 だがアンサンブル ±0"),
 }
 
 

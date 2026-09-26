@@ -159,6 +159,21 @@ def add_group_means(df: pd.DataFrame) -> pd.DataFrame:
 DIGIT_K = list(range(-4, 4))  # 10^-4 .. 10^3
 
 
+def add_subsidy_products(df: pd.DataFrame) -> pd.DataFrame:
+    """補助金(0/1)と、補助金がないと効きが横ばいになる3列との積。
+
+    EDA で、補助金なしの群では環境意識・収入・航続距離への不安のどれを動かしても
+    購入率がほぼ床に張り付いていた。補助金ありのときだけ値が残る形で渡す。
+    """
+    subsidy = (df["Subsidy_Available"] == "Yes").astype("float32")
+    anxiety = df["Range_Anxiety_Level"].map({"Low": 0, "Medium": 1, "High": 2}).astype("float32")
+    return pd.DataFrame({
+        "subsidy_x_env": subsidy * df["Environmental_Concern_Level"].astype("float32"),
+        "subsidy_x_income": subsidy * df["Annual_Income_USD"].astype("float32"),
+        "subsidy_x_anxiety": subsidy * anxiety,
+    }, index=df.index)
+
+
 def add_digit_features(
     df: pd.DataFrame, cols=None, ks=None, keep: list | None = None
 ) -> pd.DataFrame:

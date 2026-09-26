@@ -23,6 +23,7 @@ from xgboost import XGBClassifier
 
 import importlib
 fe = importlib.import_module("03_feature_engineering_xgb")
+fe_all = importlib.import_module("03_feature_engineering_all")   # 年収の近傍統計(--nbr)用
 
 TARGET = fe.TARGET
 
@@ -322,7 +323,8 @@ def run_cv(cfg, args):
     n_te_out = len(te_cols) * (len(cfg["te_smoothings"]) if cfg["te_smoothings"] else 1)
     oof = np.full(len(train), np.nan)
     test_pred = np.zeros(len(test))
-    importances = np.zeros(X.shape[1] + n_te_out)
+    n_nbr = 0 if args.nbr == "none" else len(fe_all.NEIGHBOR_RADII) * (3 if args.nbr == "slope" else 1)
+    importances = np.zeros(X.shape[1] + n_te_out + n_nbr)
     feat_names = None
     best_iters = []
     t0 = time.time()
@@ -350,6 +352,18 @@ def run_cv(cfg, args):
             X_tr = pd.concat([X_tr.reset_index(drop=True), te_tr.reset_index(drop=True)], axis=1)
             X_va = pd.concat([X_va.reset_index(drop=True), te_va.reset_index(drop=True)], axis=1)
             X_te = pd.concat([X_test.reset_index(drop=True), te_te.reset_index(drop=True)], axis=1)
+
+        if args.nbr != "none":
+            # 年収の近傍統計(近くの値の購入率・傾き・曲率)。fold 内で作りリークを防ぐ
+            income = train["Annual_Income_USD"].to_numpy()
+            nb_tr, (nb_va, nb_te) = fe_all.add_income_neighborhood(
+                income[tr_idx], y.to_numpy()[tr_idx],
+                [income[va_idx], test["Annual_Income_USD"].to_numpy()],
+                with_slope=(args.nbr == "slope"), seed=42,
+            )
+            X_tr = pd.concat([X_tr.reset_index(drop=True), nb_tr], axis=1)
+            X_va = pd.concat([X_va.reset_index(drop=True), nb_va], axis=1)
+            X_te = pd.concat([X_te.reset_index(drop=True), nb_te], axis=1)
 
         if args.dump_features:
             import feature_catalog
@@ -440,6 +454,10 @@ def main():
                     help="extra XGBClassifier param, repeatable")
     ap.add_argument("--n-jobs", type=int, default=-1)
     ap.add_argument("--save", action="store_true")
+    ap.add_argument(
+        "--nbr", choices=["none", "rate", "slope"], default="none",
+        help="年収の近傍統計を足す。rate=近くの値の購入率のみ / slope=+傾き・曲率",
+    )
     ap.add_argument(
         "--dump-features", action="store_true",
         help="学習せず、fold1 の特徴量の列名を docs/features_<tag>.json に書いて終了する",

@@ -552,6 +552,10 @@ def main():
     ap.add_argument("--tag", type=str, default="realmlp", help="出力ファイル名の接尾辞")
     ap.add_argument("--no-save", action="store_true")
     ap.add_argument(
+        "--nbr", choices=["none", "rate", "slope"], default="none",
+        help="年収の近傍統計を足す。rate=近くの値の購入率のみ / slope=+傾き・曲率",
+    )
+    ap.add_argument(
         "--dump-features", action="store_true",
         help="学習せず、fold1 の特徴量の列名を docs/features_<tag>.json に書いて終了する",
     )
@@ -658,6 +662,17 @@ def main():
             X_tr[list(ht_tr.columns)] = ht_tr
             X_val[list(ht_val.columns)] = ht_val
             X_tst[list(ht_tst.columns)] = ht_tst
+
+        if args.nbr != "none":
+            # 年収の近傍統計(近くの値の購入率・傾き・曲率)。fold 内で作りリークを防ぐ
+            nbr_fe = importlib.import_module("03_feature_engineering_all")
+            nb_tr, (nb_val, nb_tst) = nbr_fe.add_income_neighborhood(
+                X_tr["Annual_Income_USD"].to_numpy(), y_tr.to_numpy(),
+                [X_val["Annual_Income_USD"].to_numpy(), X_tst["Annual_Income_USD"].to_numpy()],
+                with_slope=(args.nbr == "slope"), seed=42,
+            )
+            for frame, block in ((X_tr, nb_tr), (X_val, nb_val), (X_tst, nb_tst)):
+                frame[list(block.columns)] = block.to_numpy()
 
         if fold == 1:
             print(f"len(FEATURES): {X_tr.shape[1]}", flush=True)

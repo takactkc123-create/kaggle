@@ -62,6 +62,10 @@ def build_parser():
     p.add_argument("--inner", type=int, default=5, help="inner folds for TE")
     p.add_argument("--save", action="store_true", help="write submission/oof/importance")
     p.add_argument(
+        "--drop-cols", default="",
+        help="生の列をカンマ区切りで指定して丸ごと除外する。派生列(TE/Count/digit)も一緒に消える",
+    )
+    p.add_argument(
         "--dump-features", action="store_true",
         help="学習せず、fold1 の特徴量の列名を docs/features_<tag>.json に書いて終了する",
     )
@@ -87,6 +91,20 @@ def build_parser():
 def main():
     args = build_parser().parse_args()
     pats = [s.strip() for s in args.patterns.split(",") if s.strip()]
+
+    if args.drop_cols:
+        # 生の列を落とす。FE 関数はモジュール変数を呼び出し時に参照するので、
+        # ここで差し替えると TE キー・Count キー・digit も連動して消える
+        drop = {c.strip() for c in args.drop_cols.split(",") if c.strip()}
+        known = set(fe.NUMERIC_COLS) | set(fe.CATEGORICAL_COLS)
+        unknown = drop - known
+        if unknown:
+            raise SystemExit(f"unknown columns: {sorted(unknown)}")
+        fe.NUMERIC_COLS = [c for c in fe.NUMERIC_COLS if c not in drop]
+        fe.CATEGORICAL_COLS = [c for c in fe.CATEGORICAL_COLS if c not in drop]
+        fe.LOW_CARD_NUMERIC = [c for c in fe.LOW_CARD_NUMERIC if c not in drop]
+        print(f"除外した列: {sorted(drop)}  -> 残り "
+              f"数値{len(fe.NUMERIC_COLS)} / カテゴリ{len(fe.CATEGORICAL_COLS)}", flush=True)
     t0 = time.time()
 
     train, test = fe.load_data()
@@ -128,6 +146,9 @@ def main():
         X_parts_tr = [train_c[fe.CATEGORICAL_COLS]]
         X_parts_te = [test_c[fe.CATEGORICAL_COLS]]
 
+    if "subsidy_x" in pats:
+        X_parts_tr.append(fe.add_subsidy_products(train))
+        X_parts_te.append(fe.add_subsidy_products(test))
     if "arith" in pats:
         X_parts_tr.append(fe.add_arithmetic_meaningful(train))
         X_parts_te.append(fe.add_arithmetic_meaningful(test))
@@ -178,6 +199,10 @@ def main():
         te_keys += fe.single_keys("num")
     if "te2" in pats:
         te_keys += fe.pair_keys("cat")
+    if "te2subsidy" in pats:
+        # 補助金と、補助金なしでは効きが横ばいになる3列の組み合わせ(EDA 由来)
+        te_keys += [("Subsidy_Available", c) for c in
+                    ("Environmental_Concern_Level", "Annual_Income_USD", "Range_Anxiety_Level")]
     if "te2all" in pats:
         te_keys += fe.pair_keys("all")
     if "te2catnum" in pats:
@@ -234,6 +259,18 @@ def main():
             X_tr = pd.concat([X_tr.reset_index(drop=True), te_tr.reset_index(drop=True)], axis=1)
             X_va = pd.concat([X_va.reset_index(drop=True), te_va.reset_index(drop=True)], axis=1)
             X_te = pd.concat([X_te.reset_index(drop=True), te_te.reset_index(drop=True)], axis=1)
+
+        if "nbr" in pats or "nbr_slope" in pats:
+            # 年収の近傍統計(近くの値の購入率・傾き・曲率)。fold 内で作りリークを防ぐ
+            nbr_fe = importlib.import_module("03_feature_engineering_all")
+            income = train["Annual_Income_USD"].to_numpy()
+            nb_tr, (nb_va, nb_te) = nbr_fe.add_income_neighborhood(
+                income[tr_idx], y_tr, [income[va_idx], test["Annual_Income_USD"].to_numpy()],
+                with_slope=("nbr_slope" in pats), seed=SEED,
+            )
+            X_tr = pd.concat([X_tr.reset_index(drop=True), nb_tr], axis=1)
+            X_va = pd.concat([X_va.reset_index(drop=True), nb_va], axis=1)
+            X_te = pd.concat([X_te.reset_index(drop=True), nb_te], axis=1)
 
         if args.dump_features:
             import feature_catalog

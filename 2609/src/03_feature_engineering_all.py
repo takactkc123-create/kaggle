@@ -366,3 +366,80 @@ def cat_pairs(cols=None):
     """【打ち止め】カテゴリ列の2列ペアを列挙する (交互作用TE用)."""
     cols = CATEGORICAL_COLS if cols is None else cols
     return [tuple(p) for p in itertools.combinations(cols, 2)]
+
+
+# ==========================================================================
+# 6. 年収の近傍統計(近くの値の購入率・傾き・曲率)
+#    出典: jazivxt/single-model-zoom-zoom の局所ビン統計、blamerx の window encodings
+#    厳密値TEは「年収がちょうどこの値」の購入率(1値あたり約50行)。
+#    ここでは「この値を中心に ±r ドル」の購入率と、左右の購入率の差(カーブの向き)を渡す。
+# ==========================================================================
+NEIGHBOR_RADII = (10, 50, 250, 1000)   # 窓に入る行数は中央値で約 400 / 1,300 / 4,600 / 16,000 行
+
+
+def _window_stats(fit_values, fit_y, query_values, radius):
+    """query の各値について、fit 側の3つの窓の (購入者数, 件数) を返す。
+
+    fit を値の順に並べて累積和を作り、窓の端を searchsorted で探す。
+    窓の中の合計は「右端までの累積 - 左端の手前までの累積」。行ごとのループがないので速い。
+
+      center: [x - r, x + r]   left: [x - r, x)   right: (x, x + r]
+    """
+    order = np.argsort(fit_values, kind="stable")
+    sorted_values = np.asarray(fit_values, dtype=np.float64)[order]
+    cum_pos = np.concatenate([[0.0], np.cumsum(np.asarray(fit_y, dtype=np.float64)[order])])
+    q = np.asarray(query_values, dtype=np.float64)
+
+    lo = np.searchsorted(sorted_values, q - radius, side="left")
+    mid_lo = np.searchsorted(sorted_values, q, side="left")
+    mid_hi = np.searchsorted(sorted_values, q, side="right")
+    hi = np.searchsorted(sorted_values, q + radius, side="right")
+
+    def count(a, b):
+        return cum_pos[b] - cum_pos[a], (b - a).astype(np.float64)
+
+    return {"center": count(lo, hi), "left": count(lo, mid_lo), "right": count(mid_hi, hi)}
+
+
+def _neighborhood_frame(fit_values, fit_y, query_values, radii, smooth, prior, with_slope):
+    """1組の (fit, query) について、半径ごとの購入率・傾き・曲率の列を作る。"""
+    columns = {}
+    for r in radii:
+        stats = _window_stats(fit_values, fit_y, query_values, r)
+        rate = {k: (pos + smooth * prior) / (cnt + smooth) for k, (pos, cnt) in stats.items()}
+        columns[f"inc_nbr_r{r}"] = rate["center"]
+        if with_slope:
+            columns[f"inc_slope_r{r}"] = rate["right"] - rate["left"]
+            columns[f"inc_curve_r{r}"] = rate["center"] - 0.5 * (rate["left"] + rate["right"])
+    return pd.DataFrame(columns).astype("float32")
+
+
+def add_income_neighborhood(fit_income, fit_y, other_incomes, radii=NEIGHBOR_RADII,
+                            smooth=10.0, with_slope=True, n_inner=5, seed=42):
+    """年収の近傍統計を、target_encode_fold と同じ作法でリークなく作る。
+
+    - fit 側の行: 内側 n_inner-fold の out-of-fold 値(自分の正解を含まない)
+    - other(valid / test): fit 全体の統計
+    購入率は smooth 件ぶん全体平均に寄せる: (購入者 + smooth * 平均) / (件数 + smooth)
+
+    返り値: (fit 用の DataFrame, [other ごとの DataFrame])
+    列: 半径ごとに inc_nbr_r{r}、with_slope なら inc_slope_r{r} / inc_curve_r{r} も
+    """
+    fit_income = np.asarray(fit_income, dtype=np.float64)
+    fit_y = np.asarray(fit_y)
+    prior = float(fit_y.mean())
+
+    fit_frame = None
+    inner = StratifiedKFold(n_splits=n_inner, shuffle=True, random_state=seed)
+    for inner_fit, inner_valid in inner.split(fit_income, fit_y):
+        block = _neighborhood_frame(fit_income[inner_fit], fit_y[inner_fit], fit_income[inner_valid],
+                                    radii, smooth, float(fit_y[inner_fit].mean()), with_slope)
+        if fit_frame is None:
+            fit_frame = pd.DataFrame(np.nan, index=range(len(fit_income)),
+                                     columns=block.columns, dtype="float32")
+        fit_frame.iloc[inner_valid] = block.to_numpy()
+
+    others = [_neighborhood_frame(fit_income, fit_y, np.asarray(o, dtype=np.float64),
+                                  radii, smooth, prior, with_slope)
+              for o in other_incomes]
+    return fit_frame, others
