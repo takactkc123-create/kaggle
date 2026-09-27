@@ -466,3 +466,684 @@ def add_income_neighborhood(fit_income, fit_y, other_incomes, radii=NEIGHBOR_RAD
                                   radii, smooth, prior, with_slope)
               for o in other_incomes]
     return fit_frame, others
+
+
+# ============================================================================
+# 不採用(記録)— 各モデルの 03_feature_engineering_<model>.py から移した関数
+#   本番では使わない。再検証しないための記録として残す。名前の末尾はもとのモデル。
+#   根拠は src/feature_catalog.py の FUNC_STATUS と、notebooks/03_feature_engineering.ipynb の 9 章。
+#   移す前のコードは git のタグ best-20260927-d にある。
+# ============================================================================
+
+
+# 移した関数が参照する定数
+LOW_CARD_NUMERIC_LGBM = [
+    "Number_of_Cars_Owned",
+    "Charging_Stations_Near_Home",
+    "Charging_Stations_Near_Work",
+    "Environmental_Concern_Level",
+    "Age",
+]
+_EPS_XGB = 1e-6
+INTERACTION_PAIRS_CATBOOST = [
+    ("City_Type", "Home_Charging_Possible"),
+    ("City_Type", "Current_Car_Type"),
+    ("Current_Car_Type", "Range_Anxiety_Level"),
+    ("Home_Charging_Possible", "Subsidy_Available"),
+    ("Range_Anxiety_Level", "Subsidy_Available"),
+    ("Gender", "City_Type"),
+    ("Charging_Stations_Near_Home", "Charging_Stations_Near_Work"),
+    ("Environmental_Concern_Level", "Range_Anxiety_Level"),
+    ("Age", "Environmental_Concern_Level"),
+    ("City_Type", "Environmental_Concern_Level"),
+]
+
+
+# ---- LightGBM(もとは 03_feature_engineering_lgbm.py) --------------------
+
+# 【不採用】意味で選んだ比・差・和の列を作る
+def add_arithmetic_meaningful_lgbm(df: pd.DataFrame) -> pd.DataFrame:
+    """Domain-meaningful ratio / diff / sum features."""
+    out = pd.DataFrame(index=df.index)
+    home = df["Charging_Stations_Near_Home"]
+    work = df["Charging_Stations_Near_Work"]
+    inc = df["Annual_Income_USD"]
+    km = df["Daily_Commute_km"]
+    age = df["Age"]
+    cars = df["Number_of_Cars_Owned"]
+    env = df["Environmental_Concern_Level"]
+
+    out["ar_charge_sum"] = home + work
+    out["ar_charge_diff"] = home - work
+    out["ar_charge_ratio"] = home / (work + 1.0)
+    out["ar_income_per_km"] = inc / (km + 1.0)
+    out["ar_income_per_age"] = inc / age
+    out["ar_income_per_car"] = inc / (cars + 1.0)
+    out["ar_km_per_charge"] = km / (home + work + 1.0)
+    out["ar_income_x_env"] = inc * env
+    out["ar_env_per_km"] = env / (km + 1.0)
+    out["ar_charge_per_car"] = (home + work) / (cars + 1.0)
+    out["ar_age_x_env"] = age * env
+    out["ar_km_per_car"] = km / (cars + 1.0)
+    return out
+
+
+# 【不採用】数値列の全ペアの差・比・和の列を作る
+def add_arithmetic_all_pairs_lgbm(df: pd.DataFrame, cols=None) -> pd.DataFrame:
+    """diff / ratio / sum over every numeric pair.
+
+    `avg` for a pair is a strictly monotonic transform of `sum` (sum / 2), so
+    tree models cannot distinguish them -> only `sum` is materialised here and
+    `avg` is covered by the multi-column group means below.
+    """
+    cols = NUMERIC_COLS if cols is None else cols
+    out = pd.DataFrame(index=df.index)
+    for a, b in itertools.combinations(cols, 2):
+        va = df[a].astype("float32")
+        vb = df[b].astype("float32")
+        out[f"p_{a}_m_{b}"] = va - vb
+        out[f"p_{a}_p_{b}"] = va + vb
+        out[f"p_{a}_d_{b}"] = va / (vb + 1.0)
+    return out
+
+
+# 【不採用】標準化した数値列の行ごとの平均・標準偏差を作る
+def add_group_means_lgbm(df: pd.DataFrame) -> pd.DataFrame:
+    """avg-style aggregates over standardised numeric columns."""
+    out = pd.DataFrame(index=df.index)
+    z = (df[NUMERIC_COLS] - df[NUMERIC_COLS].mean()) / df[NUMERIC_COLS].std()
+    out["g_avg_all"] = z.mean(axis=1).astype("float32")
+    out["g_std_all"] = z.std(axis=1).astype("float32")
+    out["g_avg_charge"] = df[
+        ["Charging_Stations_Near_Home", "Charging_Stations_Near_Work"]
+    ].mean(axis=1).astype("float32")
+    return out
+
+
+# 【不採用】補助金(0/1)と 3 列との積を作る
+def add_subsidy_products_lgbm(df: pd.DataFrame) -> pd.DataFrame:
+    """補助金(0/1)と、補助金がないと効きが横ばいになる3列との積。
+
+    EDA で、補助金なしの群では環境意識・収入・航続距離への不安のどれを動かしても
+    購入率がほぼ床に張り付いていた。補助金ありのときだけ値が残る形で渡す。
+    """
+    subsidy = (df["Subsidy_Available"] == "Yes").astype("float32")
+    anxiety = df["Range_Anxiety_Level"].map({"Low": 0, "Medium": 1, "High": 2}).astype("float32")
+    return pd.DataFrame({
+        "subsidy_x_env": subsidy * df["Environmental_Concern_Level"].astype("float32"),
+        "subsidy_x_income": subsidy * df["Annual_Income_USD"].astype("float32"),
+        "subsidy_x_anxiety": subsidy * anxiety,
+    }, index=df.index)
+
+
+# 【不採用】2 列の交互作用キーの一覧を返す
+def pair_keys_lgbm(kind: str = "cat"):
+    """2-way interaction keys."""
+    if kind == "cat":
+        return [tuple(p) for p in itertools.combinations(CATEGORICAL_COLS, 2)]
+    if kind == "cat_lownum":
+        return [
+            (a, b) for a in CATEGORICAL_COLS for b in LOW_CARD_NUMERIC_LGBM
+        ]
+    if kind == "lownum":
+        return [tuple(p) for p in itertools.combinations(LOW_CARD_NUMERIC_LGBM, 2)]
+    if kind == "all":
+        cols = CATEGORICAL_COLS + LOW_CARD_NUMERIC_LGBM
+        return [tuple(p) for p in itertools.combinations(cols, 2)]
+    raise ValueError(kind)
+
+
+# 【不採用】3 列の交互作用キーの一覧を返す
+def triple_keys_lgbm(kind: str = "cat"):
+    """【打ち止め】3列を連結した交互作用キー."""
+    if kind == "cat":
+        return [tuple(p) for p in itertools.combinations(CATEGORICAL_COLS, 3)]
+    if kind == "selected":
+        return [
+            ("Home_Charging_Possible", "Range_Anxiety_Level", "Subsidy_Available"),
+            ("City_Type", "Current_Car_Type", "Range_Anxiety_Level"),
+            ("Home_Charging_Possible", "Charging_Stations_Near_Home", "Range_Anxiety_Level"),
+            ("Environmental_Concern_Level", "Range_Anxiety_Level", "Home_Charging_Possible"),
+            ("City_Type", "Home_Charging_Possible", "Environmental_Concern_Level"),
+        ]
+    raise ValueError(kind)
+
+
+# 【不採用】全列を連結したキー(行フィンガープリント)を作る
+def all_columns_key_lgbm():
+    """One key made of every raw column (row fingerprint).
+
+    WARNING (measured 2026-09-12): the full 13-column key is **unique for every
+    single train row** (668,665 distinct keys / 668,665 rows, 100% singletons),
+    so both TE and Count degenerate to a constant. Kept only for reference -
+    use `fingerprint_key_lgbm()` subsets instead.
+    """
+    return [tuple(NUMERIC_COLS + CATEGORICAL_COLS)]
+
+
+# fingerprint subsets that actually have repeated rows
+FP_SETS_LGBM = {
+    # 142,801 keys / median count 10 / only 8.8% singletons  <- the sweet spot
+    "fp1": CATEGORICAL_COLS
+    + [
+        "Number_of_Cars_Owned",
+        "Charging_Stations_Near_Home",
+        "Charging_Stations_Near_Work",
+        "Environmental_Concern_Level",
+    ],
+    # 313 keys / median count 13,652 -> full 6-way categorical interaction
+    "fp2": list(CATEGORICAL_COLS),
+    # 150,264 keys / median count 8
+    "fp3": list(LOW_CARD_NUMERIC_LGBM),
+    # cat6 + the two binary-ish charging signals only
+    "fp4": CATEGORICAL_COLS
+    + ["Charging_Stations_Near_Home", "Environmental_Concern_Level"],
+}
+
+
+# 【不採用】列の部分集合を連結したキーを作る
+def fingerprint_key_lgbm(name: str):
+    """Single multi-column key for the named fingerprint subset."""
+    return [tuple(FP_SETS_LGBM[name])]
+
+
+# ---- XGBoost(もとは 03_feature_engineering_xgb.py) --------------------
+
+# 平滑化の強さを列名用の文字列にする
+def _smooth_tag_xgb(sm):
+    if sm == "auto":
+        return "a"
+    f = float(sm)
+    return str(int(f)) if f == int(f) else str(f).replace(".", "p")
+
+
+# 数値列はそのまま、カテゴリ列は category 型にした基本のフレームを作る
+def make_base_xgb(train: pd.DataFrame, test: pd.DataFrame):
+    """Baseline feature frames: numeric as-is + categorical as pandas Categorical.
+
+    Mirrors 02_baseline_xgb.py (enable_categorical=True path).
+    """
+    tr = train[NUMERIC_COLS + CATEGORICAL_COLS].copy()
+    te = test[NUMERIC_COLS + CATEGORICAL_COLS].copy()
+    return as_native_category_xgb(tr, te, CATEGORICAL_COLS)
+
+
+# カテゴリ列を train・test 共通の水準で category 型にする
+def as_native_category_xgb(tr: pd.DataFrame, te: pd.DataFrame, cols):
+    """Align category sets across train/test and cast to pandas Categorical."""
+    tr = tr.copy()
+    te = te.copy()
+    for c in cols:
+        cats = pd.concat([tr[c].astype(str), te[c].astype(str)]).astype("category").cat.categories
+        tr[c] = pd.Categorical(tr[c].astype(str), categories=cats)
+        te[c] = pd.Categorical(te[c].astype(str), categories=cats)
+    return tr, te
+
+
+# 【不採用】カテゴリ列を One-Hot Encoding する
+def as_onehot_xgb(tr: pd.DataFrame, te: pd.DataFrame, cols):
+    """One-hot encoding of the given columns (drop original)."""
+    n_tr = len(tr)
+    both = pd.concat([tr, te], axis=0, ignore_index=True)
+    for c in cols:
+        both[c] = both[c].astype(str)
+    both = pd.get_dummies(both, columns=list(cols), dtype="int8")
+    return both.iloc[:n_tr].reset_index(drop=True), both.iloc[n_tr:].reset_index(drop=True)
+
+
+# Semantically meaningful pairs (first pass).
+MEANINGFUL_PAIRS_XGB = [
+    ("Charging_Stations_Near_Home", "Charging_Stations_Near_Work"),
+    ("Annual_Income_USD", "Daily_Commute_km"),
+    ("Age", "Annual_Income_USD"),
+    ("Annual_Income_USD", "Number_of_Cars_Owned"),
+    ("Daily_Commute_km", "Charging_Stations_Near_Work"),
+    ("Environmental_Concern_Level", "Annual_Income_USD"),
+    ("Age", "Number_of_Cars_Owned"),
+]
+
+
+# 2 列の和・差・比・平均の列をまとめて作る
+def _arith_block_xgb(df: pd.DataFrame, pairs, ops=("diff", "ratio", "sum", "avg")):
+    out = {}
+    for a, b in pairs:
+        va = df[a].astype("float32")
+        vb = df[b].astype("float32")
+        if "diff" in ops:
+            out[f"{a}_minus_{b}"] = va - vb
+        if "sum" in ops:
+            out[f"{a}_plus_{b}"] = va + vb
+        if "avg" in ops:
+            out[f"{a}_avg_{b}"] = (va + vb) / 2.0
+        if "ratio" in ops:
+            out[f"{a}_div_{b}"] = va / (vb + _EPS_XGB)
+    return pd.DataFrame(out, index=df.index)
+
+
+# 【不採用】数値列の四則演算の列を追加する
+def add_arithmetic_xgb(tr, te, src_tr, src_te, pairs=None, ops=("diff", "ratio", "sum", "avg")):
+    """Append arithmetic combinations of numeric columns.
+
+    `src_*` are the raw frames holding the numeric columns.
+    """
+    pairs = MEANINGFUL_PAIRS_XGB if pairs is None else pairs
+    return (
+        pd.concat([tr, _arith_block_xgb(src_tr, pairs, ops)], axis=1),
+        pd.concat([te, _arith_block_xgb(src_te, pairs, ops)], axis=1),
+    )
+
+
+# 【不採用】数値列の 2 列の組をすべて列挙する
+def all_numeric_pairs_xgb():
+    """【打ち止め】数値列の全2列ペアを列挙する (四則演算用)."""
+    pairs = []
+    for i, a in enumerate(NUMERIC_COLS):
+        for b in NUMERIC_COLS[i + 1 :]:
+            pairs.append((a, b))
+    return pairs
+
+
+# 【不採用】2 列を連結した交互作用のキーを作る
+def make_interaction_keys_xgb(src_tr, src_te, pairs):
+    """Build string keys for column pairs -> returned as extra raw frames."""
+    ktr = pd.DataFrame(index=src_tr.index)
+    kte = pd.DataFrame(index=src_te.index)
+    for a, b in pairs:
+        name = f"{a}__x__{b}"
+        ktr[name] = src_tr[a].astype(str) + "|" + src_tr[b].astype(str)
+        kte[name] = src_te[a].astype(str) + "|" + src_te[b].astype(str)
+    return ktr, kte
+
+
+# 【不採用】カテゴリ列の 2 列の組をすべて列挙する
+def cat_pairs_xgb(cols=None):
+    """【打ち止め】カテゴリ列の2列ペアを列挙する (交互作用TE用)."""
+    cols = CATEGORICAL_COLS if cols is None else cols
+    out = []
+    for i, a in enumerate(cols):
+        for b in cols[i + 1 :]:
+            out.append((a, b))
+    return out
+
+
+# 【不採用】学習行だけで Target Encoding の対応表を作る(Out-of-Fold なし)
+def fit_target_encoding_xgb(src_fit: pd.DataFrame, y_fit, cols, smoothing=20.0, min_samples=1):
+    """Fit smoothed target encoding maps on the *training fold only*.
+
+    Returns a dict {col: (mapping Series, prior)}.
+    """
+    y_fit = pd.Series(np.asarray(y_fit), index=src_fit.index)
+    prior = float(y_fit.mean())
+    maps = {}
+    for c in cols:
+        key = src_fit[c]
+        grp = y_fit.groupby(key, observed=True)
+        agg = grp.agg(["sum", "count"])
+        smooth = (agg["sum"] + prior * smoothing) / (agg["count"] + smoothing)
+        if min_samples > 1:
+            smooth = smooth.where(agg["count"] >= min_samples, prior)
+        maps[c] = (smooth.astype("float32"), prior)
+    return maps
+
+
+# 【不採用】Target Encoding の対応表を当てる
+def apply_target_encoding_xgb(src: pd.DataFrame, maps, suffix="_te"):
+    """Apply fitted TE maps. Unseen values fall back to the fold prior."""
+    out = {}
+    for c, (mapping, prior) in maps.items():
+        out[f"{c}{suffix}"] = src[c].map(mapping).astype("float32").fillna(np.float32(prior))
+    return pd.DataFrame(out, index=src.index)
+
+
+# 【不採用】学習行で作った Target Encoding を学習・検証・test に当てる
+def fit_apply_te_cv_xgb(src_tr, src_te, y, cols, train_idx, valid_idx, smoothing=20.0, min_samples=1):
+    """Convenience: fit on train_idx rows, return (te_train, te_valid, te_test).
+
+    Simple variant: the training rows receive the statistic computed from the
+    whole training fold (including themselves). Safe w.r.t. the validation fold,
+    but the training rows see a slightly optimistic encoding.
+    """
+    maps = fit_target_encoding_xgb(
+        src_tr.iloc[train_idx], np.asarray(y)[train_idx], cols, smoothing, min_samples
+    )
+    return (
+        apply_target_encoding_xgb(src_tr.iloc[train_idx], maps),
+        apply_target_encoding_xgb(src_tr.iloc[valid_idx], maps),
+        apply_target_encoding_xgb(src_te, maps),
+    )
+
+
+# 【不採用】Out-of-Fold の Target Encoding(平滑化 1 種類)を作る
+def fit_apply_te_cv_nested_xgb(
+    src_tr,
+    src_te,
+    y,
+    cols,
+    train_idx,
+    valid_idx,
+    smoothing=20.0,
+    min_samples=1,
+    n_inner=5,
+    seed=42,
+):
+    """Double-protected target encoding.
+
+    - Everything is fitted strictly inside the OUTER training fold.
+    - TRAINING rows get inner out-of-fold values (inner StratifiedKFold), so a
+      row never sees its own label through the encoding.
+    - VALIDATION and TEST rows get the statistic of the whole outer training fold.
+
+    This removes the optimistic bias on the training rows and is what makes the
+    exact-value TE actually pay off.
+    """
+    from sklearn.model_selection import StratifiedKFold
+
+    y_arr = np.asarray(y)
+    fit_src = src_tr.iloc[train_idx].reset_index(drop=True)
+    fit_y = y_arr[train_idx]
+
+    # training rows: inner OOF encoding
+    te_train = pd.DataFrame(
+        np.zeros((len(fit_src), len(cols)), dtype="float32"),
+        columns=[f"{c}_te" for c in cols],
+    )
+    inner = StratifiedKFold(n_splits=n_inner, shuffle=True, random_state=seed)
+    for in_tr, in_va in inner.split(fit_src, fit_y):
+        maps = fit_target_encoding_xgb(
+            fit_src.iloc[in_tr], fit_y[in_tr], cols, smoothing, min_samples
+        )
+        te_train.iloc[in_va] = apply_target_encoding_xgb(fit_src.iloc[in_va], maps).values
+
+    # validation / test: statistic of the full outer training fold
+    full_maps = fit_target_encoding_xgb(fit_src, fit_y, cols, smoothing, min_samples)
+    return (
+        te_train,
+        apply_target_encoding_xgb(src_tr.iloc[valid_idx], full_maps),
+        apply_target_encoding_xgb(src_te, full_maps),
+    )
+
+
+# 【不採用】平滑化を複数並べた Target Encoding の対応表を作る
+def fit_target_encoding_multi_xgb(src_fit, y_fit, cols, smoothings=(20.0,), min_samples=1):
+    """Fit TE maps for *several* smoothing strengths at once.
+
+    The per-column groupby is done once and reused for every smoothing value,
+    so k smoothings cost far less than k separate passes.
+
+    ``smoothings`` accepts floats (m-estimate: ``(sum + prior*m)/(count + m)``)
+    and the string ``"auto"``, which reproduces sklearn's empirical-Bayes
+    shrinkage ``lambda = var(y)*n / (var(y)*n + var_within)``. For a binary
+    target ``var_within = p_i*(1-p_i)``, so no extra aggregation is needed.
+
+    Returns {out_col_name: (src_col, mapping Series, prior)}.
+    """
+    y_ser = pd.Series(np.asarray(y_fit, dtype="float64"), index=src_fit.index)
+    prior = float(y_ser.mean())
+    y_var = float(y_ser.var(ddof=0))
+    maps = {}
+    for c in cols:
+        agg = y_ser.groupby(src_fit[c], observed=True).agg(["sum", "count"])
+        s = agg["sum"].to_numpy()
+        n = agg["count"].to_numpy()
+        mean_cat = s / n
+        for sm in smoothings:
+            if sm == "auto":
+                var_cat = mean_cat * (1.0 - mean_cat)
+                denom = y_var * n + var_cat
+                lam = np.where(denom > 0, (y_var * n) / np.where(denom > 0, denom, 1.0), 1.0)
+                enc = lam * mean_cat + (1.0 - lam) * prior
+            else:
+                m = float(sm)
+                enc = (s + prior * m) / (n + m)
+            if min_samples > 1:
+                enc = np.where(n >= min_samples, enc, prior)
+            name = f"{c}_te{_smooth_tag_xgb(sm)}"
+            maps[name] = (c, pd.Series(enc.astype("float32"), index=agg.index), prior)
+    return maps
+
+
+# 【不採用】平滑化を複数並べた対応表をまとめて当てる
+def apply_target_encoding_multi_xgb(src: pd.DataFrame, maps):
+    """複数 smooth の TE マップをまとめて適用する."""
+    out = {}
+    for name, (col, mapping, prior) in maps.items():
+        out[name] = src[col].map(mapping).astype("float32").fillna(np.float32(prior))
+    return pd.DataFrame(out, index=src.index)
+
+
+# 【不採用】スタンド数などの行ごとの最小・最大・合計を作る
+def add_row_aggregates_xgb(tr, te, src_tr, src_te):
+    """Simple row-wise aggregates over the charging-station / concern block."""
+    tr = tr.copy()
+    te = te.copy()
+    for frame, src in ((tr, src_tr), (te, src_te)):
+        home = src["Charging_Stations_Near_Home"].astype("float32")
+        work = src["Charging_Stations_Near_Work"].astype("float32")
+        frame["charge_total"] = home + work
+        frame["charge_min"] = np.minimum(home, work)
+        frame["charge_max"] = np.maximum(home, work)
+    return tr, te
+
+
+# ---- CatBoost(もとは 03_feature_engineering_catboost.py) --------------------
+
+# 【不採用】数値列の四則演算の列を追加する
+def add_arithmetic_catboost(df: pd.DataFrame) -> list[str]:
+    """Add meaningful arithmetic (diff/ratio/sum/avg) features in place.
+
+    Returns the list of created column names.
+    """
+    new: list[str] = []
+
+    # 列を追加し、作った列名を記録する
+    def put(name: str, values) -> None:
+        df[name] = values
+        new.append(name)
+
+    eps = 1e-6
+    home = df["Charging_Stations_Near_Home"]
+    work = df["Charging_Stations_Near_Work"]
+    age = df["Age"]
+    inc = df["Annual_Income_USD"]
+    com = df["Daily_Commute_km"]
+    cars = df["Number_of_Cars_Owned"]
+    env = df["Environmental_Concern_Level"]
+
+    # charging station combinations
+    put("cs_sum", home + work)
+    put("cs_diff", home - work)
+    put("cs_avg", (home + work) / 2.0)
+    put("cs_ratio", home / (work + eps))
+
+    # income based
+    put("inc_per_km", inc / (com + eps))
+    put("inc_per_age", inc / (age + eps))
+    put("inc_per_car", inc / (cars + eps))
+    put("inc_x_env", inc * env)
+
+    # commute based
+    put("km_per_car", com / (cars + eps))
+    put("km_x_age", com * age)
+    put("km_per_station", com / (home + work + eps))
+
+    # environment / misc
+    put("env_x_cs", env * (home + work))
+    put("age_x_env", age * env)
+    put("cars_per_age", cars / (age + eps))
+
+    return new
+
+
+# 【不採用】2 列を連結した交互作用の列を追加する
+def add_interactions_catboost(
+    df: pd.DataFrame, pairs: list[tuple[str, str]] | None = None
+) -> list[str]:
+    """Add string-concatenated 2-column interaction keys in place."""
+    pairs = INTERACTION_PAIRS_CATBOOST if pairs is None else pairs
+    new: list[str] = []
+    for a, b in pairs:
+        name = f"ix_{a}_{b}"
+        df[name] = df[a].astype(str) + "_" + df[b].astype(str)
+        new.append(name)
+    return new
+
+
+# 【不採用】値ごとの出現回数の列を追加する
+def add_count_encoding_catboost(
+    train: pd.DataFrame, test: pd.DataFrame, cols: list[str], freq: bool = False
+) -> list[str]:
+    """Add count (or frequency) encoding for `cols`, fitted on train+test."""
+    new: list[str] = []
+    n_total = len(train) + len(test)
+    for col in cols:
+        combined = pd.concat([train[col], test[col]], ignore_index=True)
+        counts = combined.value_counts()
+        name = f"cnt_{col}"
+        mapped_tr = train[col].map(counts).astype("float64")
+        mapped_te = test[col].map(counts).astype("float64")
+        if freq:
+            mapped_tr /= n_total
+            mapped_te /= n_total
+        train[name] = mapped_tr
+        test[name] = mapped_te
+        new.append(name)
+    return new
+
+
+# ---- RealMLP(もとは 03_feature_engineering_realmlp.py。--exact-te 用) --------------------
+
+HIGHCARD_TE_COLS_REALMLP = ["Annual_Income_USD", "Daily_Commute_km"]
+
+
+SMOOTH_KEY_SCALES_TE_REALMLP = (10, 100, 1000)
+
+
+EXACT_TE_SMOOTHS_REALMLP = ("auto", 10.0, 100.0)
+
+
+# 【不採用】厳密値 Target Encoding 用のキー 5 本のフレームを作る
+def build_te_key_frame_realmlp(df: pd.DataFrame) -> pd.DataFrame:
+    """厳密値2列 + income の Smooth Keys(/10,/100,/1000) = 5キーのフレームを返す.
+
+    厳密値キーは小数1桁を ×10 して整数化し、float 等価判定の揺れを排除する
+    (fe_lgbm.make_key_frame と同方式)。教師変数は使わないので train/test それぞれに
+    直接適用してよい (リークしない)。
+    """
+    keys = pd.DataFrame(index=df.index)
+    for c in HIGHCARD_TE_COLS_REALMLP:
+        keys[c] = np.rint(df[c].to_numpy(dtype="float64") * 10).astype("int64")
+    inc = df["Annual_Income_USD"].to_numpy(dtype="float64")
+    for s in SMOOTH_KEY_SCALES_TE_REALMLP:
+        keys[f"sk_inc{s}"] = np.floor(inc / s).astype("int64")
+    return keys
+
+
+# キーごとの購入者数と行数を集計する
+def _te_agg_realmlp(arr, y):
+    return pd.DataFrame({"k": arr, "y": y}).groupby("k", observed=True)["y"].agg(
+        ["sum", "count"]
+    )
+
+
+# 集計から平滑化した購入率の対応表を作る
+def _te_map_realmlp(agg, prior, smooth):
+    cnt = agg["count"].to_numpy(dtype="float64")
+    s = agg["sum"].to_numpy(dtype="float64")
+    if isinstance(smooth, str):  # "auto" = sklearn TargetEncoder の経験ベイズ則
+        p_i = s / cnt
+        m = (p_i * (1.0 - p_i)) / (prior * (1.0 - prior))
+    else:
+        m = float(smooth)
+    return pd.Series((s + prior * m) / (cnt + m), index=agg.index)
+
+
+# 平滑化の強さを列名用の文字列にする
+def _smooth_tag_realmlp(sm):
+    if isinstance(sm, str):
+        return sm
+    f = float(sm)
+    return str(int(f)) if f == int(f) else str(f).replace(".", "p")
+
+
+# 【不採用】値の種類が多い列の Out-of-Fold Target Encoding を作る
+def target_encode_highcard_realmlp(
+    keys_fit: pd.DataFrame,
+    y_fit,
+    other_frames: list[pd.DataFrame],
+    cols,
+    smooths=EXACT_TE_SMOOTHS_REALMLP,
+    n_inner: int = 5,
+    seed: int = 42,
+):
+    """リークフリーの Out-of-Fold TE。戻り値 (te_fit, [te_other, ...]).
+
+    keys_fit     : 現在の outer fold の学習行のキーフレーム
+    other_frames : 同じ統計を当てるフレーム (通常 [valid_keys, test_keys])
+    smooths      : float または "auto" のリスト。複数指定で Triple TE。
+    """
+    from sklearn.model_selection import StratifiedKFold
+
+    smooths = list(smooths) if isinstance(smooths, (list, tuple)) else [smooths]
+    multi = len(smooths) > 1
+    y_fit = np.asarray(y_fit)
+    prior = float(y_fit.mean())
+    te_fit = pd.DataFrame(index=keys_fit.index)
+    te_others = [pd.DataFrame(index=f.index) for f in other_frames]
+
+    inner = StratifiedKFold(n_splits=n_inner, shuffle=True, random_state=seed)
+    inner_splits = list(inner.split(np.zeros(len(y_fit)), y_fit))
+
+    for c in cols:
+        arr = keys_fit[c].to_numpy()
+        names = {
+            sm: (f"te_{c}_s{_smooth_tag_realmlp(sm)}" if multi else f"te_{c}") for sm in smooths
+        }
+
+        vals = {sm: np.full(len(arr), prior, dtype="float32") for sm in smooths}
+        for in_idx, out_idx in inner_splits:
+            agg = _te_agg_realmlp(arr[in_idx], y_fit[in_idx])
+            s_out = pd.Series(arr[out_idx])
+            for sm in smooths:
+                vals[sm][out_idx] = (
+                    s_out.map(_te_map_realmlp(agg, prior, sm)).fillna(prior).to_numpy(dtype="float32")
+                )
+        for sm in smooths:
+            te_fit[names[sm]] = vals[sm]
+
+        agg_full = _te_agg_realmlp(arr, y_fit)
+        for sm in smooths:
+            m_full = _te_map_realmlp(agg_full, prior, sm)
+            for f, out in zip(other_frames, te_others):
+                out[names[sm]] = (
+                    f[c].map(m_full).fillna(prior).to_numpy(dtype="float32")
+                )
+    return te_fit, te_others
+
+
+# 【不採用】RealMLP の build_features から外した3つの特徴量(digit・通勤距離 ÷ 年齢・通勤距離 /5)を作る
+def realmlp_rejected_extras(df: pd.DataFrame, category_map: dict, fit: bool) -> pd.DataFrame:
+    """RealMLP の build_features にあった、既定で無効の3つの分岐をまとめたもの。
+
+    - digit(--digits): 年収・通勤距離の各桁をカテゴリとして embedding に渡す。fold 1 で -0.00002
+    - 通勤距離 ÷ 年齢(ratio): 2026-09-27 に削除。外しても単体 -0.000011(z=-0.75)
+    - 通勤距離 /5 のキー(km5): 2026-09-27 に削除。外しても単体 -0.000008(z=-0.51)
+    """
+    df = df.copy()
+    df["_Daily_Commute_km_/_Age"] = (df["Daily_Commute_km"] / (df["Age"] + 1e-6)).astype("float32")
+    df["Daily_km_/_5_floor_"] = np.floor(df["Daily_Commute_km"] / 5.0).astype("int64")
+    DIGIT_COLS = ["Annual_Income_USD", "Daily_Commute_km"]
+    # ── digit features (値の種類（ユニーク値）が多い2列の各桁をカテゴリとして embedding に渡す) ──
+    #    全列が小数1桁なので10倍して整数化し、浮動小数の丸め誤差を避ける。
+    #    定数になる桁は fit 時に落とし、test でも同じ列集合を使う。
+    if fit:
+        keep = []
+        for col in DIGIT_COLS:
+            scaled = np.round(df[col] * 10).astype("int64")
+            for p in range(7):
+                if ((scaled // 10**p) % 10).nunique() > 1:
+                    keep.append((col, p))
+        category_map["digits"] = keep
+    for col, p in category_map["digits"]:
+        scaled = np.round(df[col] * 10).astype("int64")
+        df[f"{col}_d{p - 1}_"] = ((scaled // 10**p) % 10).astype("int32")
+    return df

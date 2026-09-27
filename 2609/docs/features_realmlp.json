@@ -1,7 +1,7 @@
 {
  "tag": "realmlp",
  "model": "RealMLP",
- "note": "exact_te=False digits=False no_orig=False ratio=False km5=False",
+ "note": "no_orig=False combo_home=True",
  "n_features": 38,
  "cat_features": [
   "Age_Range_Anxiety_Level_",

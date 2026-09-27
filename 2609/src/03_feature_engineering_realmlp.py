@@ -31,9 +31,6 @@ IMPORTANT_COMBOS = [
     ("Age", "Range_Anxiety_Level"),
 ]
 
-# digit features の対象。値の種類（ユニーク値）が少ない列は既に厳密値の embedding を持つので値の種類（ユニーク値）が多い2列に限る
-DIGIT_COLS = ["Annual_Income_USD", "Daily_Commute_km"]
-
 # KBinsDiscretizer(quantile) の設定 (yekenot と同一)
 BIN_CONFIG = {"Annual_Income_USD": [400, 600, 800, 900, 1100]}
 
@@ -46,9 +43,6 @@ def build_features(
     category_map: dict,
     fit: bool,
     orig: pd.DataFrame | None = None,
-    digits: bool = False,
-    ratio: bool = False,
-    km5: bool = False,
     extra_combos: list | None = None,
 ):
     """yekenot RealMLP カーネルの feature_engineering を再実装した関数.
@@ -60,10 +54,7 @@ def build_features(
     category_map : fit=True で学習された変換器を貯めこむ dict (呼び出し側が保持)
     fit : True なら category_map を構築、False なら再利用
     orig : 元データ (EV_Adoption_and_Range_Anxiety_Dataset.csv)。None なら org_mean をスキップ
-    ratio : 通勤距離 ÷ 年齢 の比を作るか。2026-09-27 に不採用(外しても単体 -0.000011 / z=-0.75 で誤差)。
-            公開カーネルからの移植時に入っていたもので、旧構成の再現用に残している
-    km5 : 通勤距離 /5 のキーを作るか。2026-09-27 に不採用(外しても単体 -0.000008 / z=-0.51 で誤差)。
-          通勤距離は1値あたり 576 行あり粗くする必要がなく、1 km 刻みのキー(_cat_)とも重複する
+    extra_combos : 組み合わせキーに足す列の組(自宅充電の可否 × 自宅スタンド数など)
 
     Returns
     -------
@@ -88,16 +79,10 @@ def build_features(
             codes = df[col].map(code_map).fillna(-1).astype("int32")
         df[col] = np.asarray(codes, dtype="int32")
 
-    # ── 四則演算(不採用・既定で無効)/ 粗い解像度カテゴリ (Smooth Keys) ─────
-    if ratio:
-        df["_Daily_Commute_km_/_Age"] = (
-            df["Daily_Commute_km"] / (df["Age"] + 1e-6)
-        ).astype("float32")
+    # ── 粗い解像度カテゴリ (Smooth Keys) ──────────────────────────────────
     df["Income_/_100_floor_"] = np.floor(df["Annual_Income_USD"] / 100.0).astype("int64")
     df["Income_/_1000_floor_"] = np.floor(df["Annual_Income_USD"] / 1000.0).astype("int64")
     df["Income_/_10000_floor_"] = np.floor(df["Annual_Income_USD"] / 10000.0).astype("int64")
-    if km5:
-        df["Daily_km_/_5_floor_"] = np.floor(df["Daily_Commute_km"] / 5.0).astype("int64")
 
     # ── 数値列の floor をカテゴリ化 (厳密値に近い高解像度キー) ─────────────
     for col in num_cols:
@@ -111,22 +96,6 @@ def build_features(
             code_map = {cat: i for i, cat in enumerate(uniques)}
             codes = pd.Series(floored).map(code_map).fillna(-1).astype("int32")
         df[cat_name] = np.asarray(codes, dtype="int32")
-
-    # ── digit features (値の種類（ユニーク値）が多い2列の各桁をカテゴリとして embedding に渡す) ──
-    #    全列が小数1桁なので10倍して整数化し、浮動小数の丸め誤差を避ける。
-    #    定数になる桁は fit 時に落とし、test でも同じ列集合を使う。
-    if digits:
-        if fit:
-            keep = []
-            for col in DIGIT_COLS:
-                scaled = np.round(df[col] * 10).astype("int64")
-                for p in range(7):
-                    if ((scaled // 10**p) % 10).nunique() > 1:
-                        keep.append((col, p))
-            category_map["digits"] = keep
-        for col, p in category_map["digits"]:
-            scaled = np.round(df[col] * 10).astype("int64")
-            df[f"{col}_d{p - 1}_"] = ((scaled // 10**p) % 10).astype("int32")
 
     # ── 小数部 / 桁の特徴量 ──────────────────────────────────────────────
     for col in ["Daily_Commute_km"]:
@@ -195,121 +164,6 @@ def build_features(
     return df, new_cat_cols, new_num_cols, combo_names
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# 厳密値 Target Encoding(値の種類（ユニーク値）が多い2列に絞る版, 2026-09-18)
-#
-# 背景: GBDT 3種は「13列の厳密値TE + Smooth Keys の Triple TE」で各 +0.003 前後の
-# 改善を得ているが、RealMLP には combo TE (income×RangeAnxiety, age×RangeAnxiety の
-# 2列のみ, 04_train_and_evaluate_realmlp.py 側で適用) しか入っていなかった。
-# fe_results_all.md の分析により、54列一括投入はCPU競合で完走せずコストも高いため、
-# 効果源が確実な値の種類（ユニーク値）が多い2列 + その Smooth Keys 3本 = 5キー に絞り込む。
-# smooth を auto/10/100 の Triple で同時投入 -> 5キー × 3 smooth = 15列。
-#
-# リーク対策: Out-of-Fold (inner StratifiedKFold(5)) を outer fold 内で回し、学習行には
-# inner-OOF 値、valid/test には学習fold全体の統計を当てる (fe_lgbm/fe_all と同方式)。
-# ══════════════════════════════════════════════════════════════════════════════
-HIGHCARD_TE_COLS = ["Annual_Income_USD", "Daily_Commute_km"]
-SMOOTH_KEY_SCALES_TE = (10, 100, 1000)
-EXACT_TE_SMOOTHS = ("auto", 10.0, 100.0)
-
-
-# 【不採用】厳密値 Target Encoding 用のキー 5 本のフレームを作る
-def build_te_key_frame(df: pd.DataFrame) -> pd.DataFrame:
-    """厳密値2列 + income の Smooth Keys(/10,/100,/1000) = 5キーのフレームを返す.
-
-    厳密値キーは小数1桁を ×10 して整数化し、float 等価判定の揺れを排除する
-    (fe_lgbm.make_key_frame と同方式)。教師変数は使わないので train/test それぞれに
-    直接適用してよい (リークしない)。
-    """
-    keys = pd.DataFrame(index=df.index)
-    for c in HIGHCARD_TE_COLS:
-        keys[c] = np.rint(df[c].to_numpy(dtype="float64") * 10).astype("int64")
-    inc = df["Annual_Income_USD"].to_numpy(dtype="float64")
-    for s in SMOOTH_KEY_SCALES_TE:
-        keys[f"sk_inc{s}"] = np.floor(inc / s).astype("int64")
-    return keys
-
-
-# キーごとの購入者数と行数を集計する
-def _te_agg(arr, y):
-    return pd.DataFrame({"k": arr, "y": y}).groupby("k", observed=True)["y"].agg(
-        ["sum", "count"]
-    )
-
-
-# 集計から平滑化した購入率の対応表を作る
-def _te_map(agg, prior, smooth):
-    cnt = agg["count"].to_numpy(dtype="float64")
-    s = agg["sum"].to_numpy(dtype="float64")
-    if isinstance(smooth, str):  # "auto" = sklearn TargetEncoder の経験ベイズ則
-        p_i = s / cnt
-        m = (p_i * (1.0 - p_i)) / (prior * (1.0 - prior))
-    else:
-        m = float(smooth)
-    return pd.Series((s + prior * m) / (cnt + m), index=agg.index)
-
-
-# 平滑化の強さを列名用の文字列にする
-def _smooth_tag(sm):
-    if isinstance(sm, str):
-        return sm
-    f = float(sm)
-    return str(int(f)) if f == int(f) else str(f).replace(".", "p")
-
-
-# 【不採用】値の種類が多い列の Out-of-Fold Target Encoding を作る
-def target_encode_highcard(
-    keys_fit: pd.DataFrame,
-    y_fit,
-    other_frames: list[pd.DataFrame],
-    cols,
-    smooths=EXACT_TE_SMOOTHS,
-    n_inner: int = 5,
-    seed: int = 42,
-):
-    """リークフリーの Out-of-Fold TE。戻り値 (te_fit, [te_other, ...]).
-
-    keys_fit     : 現在の outer fold の学習行のキーフレーム
-    other_frames : 同じ統計を当てるフレーム (通常 [valid_keys, test_keys])
-    smooths      : float または "auto" のリスト。複数指定で Triple TE。
-    """
-    from sklearn.model_selection import StratifiedKFold
-
-    smooths = list(smooths) if isinstance(smooths, (list, tuple)) else [smooths]
-    multi = len(smooths) > 1
-    y_fit = np.asarray(y_fit)
-    prior = float(y_fit.mean())
-    te_fit = pd.DataFrame(index=keys_fit.index)
-    te_others = [pd.DataFrame(index=f.index) for f in other_frames]
-
-    inner = StratifiedKFold(n_splits=n_inner, shuffle=True, random_state=seed)
-    inner_splits = list(inner.split(np.zeros(len(y_fit)), y_fit))
-
-    for c in cols:
-        arr = keys_fit[c].to_numpy()
-        names = {
-            sm: (f"te_{c}_s{_smooth_tag(sm)}" if multi else f"te_{c}") for sm in smooths
-        }
-
-        vals = {sm: np.full(len(arr), prior, dtype="float32") for sm in smooths}
-        for in_idx, out_idx in inner_splits:
-            agg = _te_agg(arr[in_idx], y_fit[in_idx])
-            s_out = pd.Series(arr[out_idx])
-            for sm in smooths:
-                vals[sm][out_idx] = (
-                    s_out.map(_te_map(agg, prior, sm)).fillna(prior).to_numpy(dtype="float32")
-                )
-        for sm in smooths:
-            te_fit[names[sm]] = vals[sm]
-
-        agg_full = _te_agg(arr, y_fit)
-        for sm in smooths:
-            m_full = _te_map(agg_full, prior, sm)
-            for f, out in zip(other_frames, te_others):
-                out[names[sm]] = (
-                    f[c].map(m_full).fillna(prior).to_numpy(dtype="float32")
-                )
-    return te_fit, te_others
 
 
 # 元データを読み込み、目的変数を 0/1 にして返す(なければ None)

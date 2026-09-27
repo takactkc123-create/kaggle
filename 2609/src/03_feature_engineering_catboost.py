@@ -52,89 +52,6 @@ LOWCARD_NUM_COLS = [
 HIGHCARD_NUM_COLS = ["Annual_Income_USD", "Daily_Commute_km"]
 
 # ---------------------------------------------------------------------------
-# 1. Arithmetic features
-# ---------------------------------------------------------------------------
-
-# 【不採用】数値列の四則演算の列を追加する
-def add_arithmetic(df: pd.DataFrame) -> list[str]:
-    """Add meaningful arithmetic (diff/ratio/sum/avg) features in place.
-
-    Returns the list of created column names.
-    """
-    new: list[str] = []
-
-    # 列を追加し、作った列名を記録する
-    def put(name: str, values) -> None:
-        df[name] = values
-        new.append(name)
-
-    eps = 1e-6
-    home = df["Charging_Stations_Near_Home"]
-    work = df["Charging_Stations_Near_Work"]
-    age = df["Age"]
-    inc = df["Annual_Income_USD"]
-    com = df["Daily_Commute_km"]
-    cars = df["Number_of_Cars_Owned"]
-    env = df["Environmental_Concern_Level"]
-
-    # charging station combinations
-    put("cs_sum", home + work)
-    put("cs_diff", home - work)
-    put("cs_avg", (home + work) / 2.0)
-    put("cs_ratio", home / (work + eps))
-
-    # income based
-    put("inc_per_km", inc / (com + eps))
-    put("inc_per_age", inc / (age + eps))
-    put("inc_per_car", inc / (cars + eps))
-    put("inc_x_env", inc * env)
-
-    # commute based
-    put("km_per_car", com / (cars + eps))
-    put("km_x_age", com * age)
-    put("km_per_station", com / (home + work + eps))
-
-    # environment / misc
-    put("env_x_cs", env * (home + work))
-    put("age_x_env", age * env)
-    put("cars_per_age", cars / (age + eps))
-
-    return new
-
-
-# ---------------------------------------------------------------------------
-# 2. Interaction keys (string concatenation of 2 columns)
-# ---------------------------------------------------------------------------
-
-INTERACTION_PAIRS = [
-    ("City_Type", "Home_Charging_Possible"),
-    ("City_Type", "Current_Car_Type"),
-    ("Current_Car_Type", "Range_Anxiety_Level"),
-    ("Home_Charging_Possible", "Subsidy_Available"),
-    ("Range_Anxiety_Level", "Subsidy_Available"),
-    ("Gender", "City_Type"),
-    ("Charging_Stations_Near_Home", "Charging_Stations_Near_Work"),
-    ("Environmental_Concern_Level", "Range_Anxiety_Level"),
-    ("Age", "Environmental_Concern_Level"),
-    ("City_Type", "Environmental_Concern_Level"),
-]
-
-
-# 【不採用】2 列を連結した交互作用の列を追加する
-def add_interactions(
-    df: pd.DataFrame, pairs: list[tuple[str, str]] | None = None
-) -> list[str]:
-    """Add string-concatenated 2-column interaction keys in place."""
-    pairs = INTERACTION_PAIRS if pairs is None else pairs
-    new: list[str] = []
-    for a, b in pairs:
-        name = f"ix_{a}_{b}"
-        df[name] = df[a].astype(str) + "_" + df[b].astype(str)
-        new.append(name)
-    return new
-
-
-# ---------------------------------------------------------------------------
 # 2b. Digit features  (reference_URL.md S-1)
 # ---------------------------------------------------------------------------
 
@@ -190,38 +107,12 @@ SMOOTH_KEY_SPECS = [
 
 
 # 年収・通勤距離を粗く丸めたキー(Smooth Keys)を追加する
-def add_smooth_keys(df: pd.DataFrame) -> list[str]:
+def add_smooth_keys(df: pd.DataFrame, specs=None) -> list[str]:
     """Add coarse floor(x / scale) keys used as *additional* TE keys."""
     new: list[str] = []
-    for name, src, scale in SMOOTH_KEY_SPECS:
+    for name, src, scale in (SMOOTH_KEY_SPECS if specs is None else specs):
         x = pd.to_numeric(df[src], errors="coerce").fillna(0.0)
         df[name] = np.floor(x / scale).astype("int64")
-        new.append(name)
-    return new
-
-
-# ---------------------------------------------------------------------------
-# 3. Count / Frequency encoding (unsupervised -> no leak, fit on train+test)
-# ---------------------------------------------------------------------------
-
-# 【不採用】値ごとの出現回数の列を追加する
-def add_count_encoding(
-    train: pd.DataFrame, test: pd.DataFrame, cols: list[str], freq: bool = False
-) -> list[str]:
-    """Add count (or frequency) encoding for `cols`, fitted on train+test."""
-    new: list[str] = []
-    n_total = len(train) + len(test)
-    for col in cols:
-        combined = pd.concat([train[col], test[col]], ignore_index=True)
-        counts = combined.value_counts()
-        name = f"cnt_{col}"
-        mapped_tr = train[col].map(counts).astype("float64")
-        mapped_te = test[col].map(counts).astype("float64")
-        if freq:
-            mapped_tr /= n_total
-            mapped_te /= n_total
-        train[name] = mapped_tr
-        test[name] = mapped_te
         new.append(name)
     return new
 
@@ -262,6 +153,7 @@ def target_encode(
     n_inner: int = 5,
     seed: int = 42,
     drop_source: bool = False,
+    always_tag: bool = False,
 ) -> list[str]:
     """Leak-free target encoding.
 
@@ -283,7 +175,7 @@ def target_encode(
         keys_va = va[col].astype(str)
         keys_te = te[col].astype(str)
         names = [
-            f"te_{col}" if len(levels) == 1 else f"te{_smooth_tag(s)}_{col}"
+            f"te_{col}" if len(levels) == 1 and not always_tag else f"te{_smooth_tag(s)}_{col}"
             for s in levels
         ]
 
@@ -328,34 +220,32 @@ def cast_to_str(frames: list[pd.DataFrame], cols: list[str]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 重複している列(同じ情報を形だけ変えて持っている列)の一覧
+# 本番の構成(作る列の設計)
 # ---------------------------------------------------------------------------
-# 他の列と同じ情報しか持たない列の名前を返す(--dedup)
-def dedup_columns() -> list[str]:
-    """他の列と同じ情報しか持たない列の名前を返す(--dedup で学習から外す)。
+TRIPLE_SMOOTHS = [10.0, 20.0, 100.0]
+# digit を作る列。保有台数・環境意識は 1 の位だけになる(catify した元の列を、数値として見る唯一の列)
+DIGIT_COLS = HIGHCARD_NUM_COLS + ["Number_of_Cars_Owned", "Environmental_Concern_Level"]
+# Smooth Keys。年収 /1 は年収そのものと同じキーになるので作らない
+PROD_SMOOTH_KEY_SPECS = [spec for spec in SMOOTH_KEY_SPECS if spec[0] != "sk_inc_1"]
 
-    - 値の種類（ユニーク値）が少ない11列の TE は、平滑化 10 / 20 / 100 の順位相関が 0.9999 以上になる
-      (1値あたり数万行あり、平滑化の強さが効かない)。20 だけ残し 10 / 100 を外す
-    - Smooth Key の sk_inc_1 = floor(年収) は、年収が整数なので年収そのものと同じキー。
-      その TE 3列は年収の TE と値まで同じ
-    - 値が 0〜9 に収まる列の 1 の位(保有台数・環境意識)は外さない。CatBoost では元の列を
-      catify でカテゴリにしているので、この2列が「数値として見る」唯一の列になっている
+
+# 本番で作る Target Encoding の (キー, 平滑化) の一覧を返す。この順番がそのまま列の並び順になる
+def te_plan(smooth_key_names):
+    """数値列の順(値の種類が多い2列は平滑化3種、少ない5列は 20 だけ)→ Smooth Keys 3本(3種)。
+
+    カテゴリ列には作らない(CatBoost は cat_features の購入率を内部で計算している)。
+    列の並び順は学習結果に影響する(列ごとのビン数の指定が列の位置で決まる)ので変えないこと。
     """
-    lowcard = CATEGORICAL_COLS + LOWCARD_NUM_COLS
-    te_dups = [f"te{s}_{c}" for c in lowcard for s in ("10", "100")]
-    sk_dups = [f"te{s}_sk_inc_1" for s in ("10", "20", "100")]
-    return te_dups + sk_dups
+    plan = [(c, TRIPLE_SMOOTHS if c in HIGHCARD_NUM_COLS else [20.0]) for c in NUMERIC_COLS]
+    plan += [(k, TRIPLE_SMOOTHS) for k in smooth_key_names]
+    return plan
 
 
-# エンコーディングを絞るときに外す列の名前を返す(--lean)
-def lean_columns() -> list[str]:
-    """エンコーディングを絞るときに外す列(--lean。dedup_columns() の後に適用する)。
-
-    LightGBM と同じ検証(2026-09-27)で、CatBoost でも外して悪化しなかった(単体 +0.000036, z=+1.97)。
-    - 値の種類（ユニーク値）が少ない数値列(年齢・スタンド数2列)の digit。保有台数・環境意識の 1 の位は、catify した列を
-      数値として見る唯一の列なので残す
-    - カテゴリ列の TE。CatBoost は cat_features の購入率を内部で自動計算している
-    """
-    digits = [f"{c}_d{k}" for c in ("Age", "Charging_Stations_Near_Home", "Charging_Stations_Near_Work")
-              for k in (0, 1)]
-    return digits + [f"te20_{c}" for c in CATEGORICAL_COLS]
+# キーごとに平滑化を変えて、fold 内で Out-of-Fold の Target Encoding を作って追加する(plan の順)
+def target_encode_plan(tr, va, te, y_tr, plan, n_inner: int = 5, seed: int = 42) -> list[str]:
+    """te_plan() のとおりに Target Encoding を作る。値は target_encode と同じ(キーごとに独立に計算するため)。"""
+    new: list[str] = []
+    for col, smooths in plan:
+        new += target_encode(tr, va, te, y_tr, [col], smooths=list(smooths), n_inner=n_inner, seed=seed,
+                             always_tag=True)
+    return new

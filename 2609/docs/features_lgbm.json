@@ -1,7 +1,7 @@
 {
  "tag": "lgbm",
  "model": "LightGBM",
- "note": "patterns=base,te1,cnt1,digit,sk,te2home smooths=auto,10,100 dedup=True lean=True",
+ "note": "本番の構成(fe.te_plan())",
  "n_features": 46,
  "cat_features": [
   "City_Type",

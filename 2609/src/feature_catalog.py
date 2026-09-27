@@ -105,9 +105,9 @@ def load(tag: str) -> dict:
 # ---------------------------------------------------------------------------
 # FE 関数の採否
 # ---------------------------------------------------------------------------
-# `03_feature_engineering_<model>.py` は**採用した関数だけを置く場所ではない**。検証して捨てた施策も
-# 「再検証しないための記録」として残してある。どれが本番で生きているのかを
-# コードから読み取るのは難しいので、ここに一覧で持つ。
+# `03_feature_engineering_<model>.py` には本番で使う関数だけを置き、検証して捨てた施策は
+# `03_feature_engineering_all.py` の「不採用(記録)」に、名前の末尾にモデル名を付けて移してある(2026-09-28)。
+# どれが本番で生きているのかを、ここに一覧で持つ。
 #
 #   ADOPTED  = 本番の構成で実際に呼ばれている
 #   REJECTED = 検証したうえで不採用。根拠を併記する(再検証不要)
@@ -120,66 +120,40 @@ ADOPTED, REJECTED, SUPPORT = "〇", "✖", "—"
 
 # (モジュール, 関数名) -> (記号, 根拠)
 FUNC_STATUS = {
-    # ---- 03_feature_engineering_lgbm.py (本番: --patterns base,te1,cnt1,digit,sk,te2home --dedup --lean) ----
+    # ---- 03_feature_engineering_lgbm.py (本番: 04 が te_plan() どおりに必要な列だけ作る) ----
     ("03_feature_engineering_lgbm", "load_data"):               (SUPPORT,  "読み込み"),
     ("03_feature_engineering_lgbm", "make_categorical"):        (ADOPTED,  "native category として渡す"),
     ("03_feature_engineering_lgbm", "make_key_frame"):          (ADOPTED,  "TE / Count のキー生成"),
-    ("03_feature_engineering_lgbm", "add_arithmetic_meaningful"): (REJECTED, "四則演算 -0.00014。打ち止め"),
-    ("03_feature_engineering_lgbm", "add_arithmetic_all_pairs"): (REJECTED, "全ペア四則演算。同上"),
-    ("03_feature_engineering_lgbm", "add_group_means"):         (REJECTED, "行方向の平均。効果なし"),
-    ("03_feature_engineering_lgbm", "add_subsidy_products"): (REJECTED, "補助金との積。+0.000009 (z=+0.65) で誤差"),
     ("03_feature_engineering_lgbm", "add_digit_features"):      (ADOPTED,  "15列(うち元の列と同じ2列は dedup で除外)"),
     ("03_feature_engineering_lgbm", "add_smooth_keys"):         (ADOPTED,  "TEキー4本を追加 (sk)"),
     ("03_feature_engineering_lgbm", "count_encode"):            (ADOPTED,  "+0.00083"),
     ("03_feature_engineering_lgbm", "target_encode_fold"):      (ADOPTED,  "最大の改善要因"),
     ("03_feature_engineering_lgbm", "single_keys"):             (ADOPTED,  "te1 / cnt1 のキー集合"),
-    ("03_feature_engineering_lgbm", "pair_keys"):               (REJECTED, "2列交互作用TE(全ペア)。全滅。自宅充電×自宅スタンド数の1組だけは te2home で最終構成に採用"),
-    ("03_feature_engineering_lgbm", "triple_keys"):             (REJECTED, "3列交互作用TE。全滅"),
-    ("03_feature_engineering_lgbm", "all_columns_key"):         (REJECTED, "行フィンガープリント。全行ユニークで原理的に不可"),
-    ("03_feature_engineering_lgbm", "fingerprint_key"):         (REJECTED, "同上(部分集合版)"),
-    ("03_feature_engineering_lgbm", "lean_columns"):            (ADOPTED,  "エンコーディングを絞る17列(62→45列)。TE だけ残す。単体 +0.000002"),
-    ("03_feature_engineering_lgbm", "dedup_columns"):           (ADOPTED,  "重複30列を除外(92→62列)。単体 ±0 / アンサンブル +0.000002"),
+    ("03_feature_engineering_lgbm", "te_plan"):               (ADOPTED,  "本番の Target Encoding の設計(キーと平滑化)"),
+    ("03_feature_engineering_lgbm", "target_encode_plan"):    (ADOPTED,  "te_plan() のとおりに Target Encoding を作る"),
 
-    # ---- 03_feature_engineering_xgb.py (本番: --pattern tte_sk_dig --dedup) ----
-    ("03_feature_engineering_xgb", "make_base"):                (ADOPTED,  "素の特徴量フレーム"),
-    ("03_feature_engineering_xgb", "as_native_category"):       (REJECTED, "ordinal と差なし。非相関性を狙い ordinal を採用"),
+    # ---- 03_feature_engineering_xgb.py (本番: 04 が te_plan() どおりに必要な列だけ作る) ----
     ("03_feature_engineering_xgb", "as_ordinal"):               (ADOPTED,  "XGBoost の最終採用方式"),
-    ("03_feature_engineering_xgb", "as_onehot"):                (REJECTED, "列が増えるだけで効果なし"),
-    ("03_feature_engineering_xgb", "add_arithmetic"):           (REJECTED, "四則演算。打ち止め"),
-    ("03_feature_engineering_xgb", "all_numeric_pairs"):        (REJECTED, "同上のペア列挙"),
     ("03_feature_engineering_xgb", "add_count_encoding"):       (ADOPTED,  "+0.00049"),
     ("03_feature_engineering_xgb", "digit_block"):              (SUPPORT,  "add_digit_features の内部"),
     ("03_feature_engineering_xgb", "add_digit_features"):       (ADOPTED,  "16列 (小数第1位を含む。うち2列は dedup で除外)"),
     ("03_feature_engineering_xgb", "make_smooth_keys"):         (ADOPTED,  "TEキー4本を追加"),
-    ("03_feature_engineering_xgb", "make_interaction_keys"):    (REJECTED, "交互作用キー。全滅"),
-    ("03_feature_engineering_xgb", "cat_pairs"):                (REJECTED, "同上のペア列挙"),
-    ("03_feature_engineering_xgb", "fit_target_encoding"):      (REJECTED, "Out-of-Fold でない旧版。Out-of-Fold 版が +0.00108 で置き換え"),
-    ("03_feature_engineering_xgb", "apply_target_encoding"):    (REJECTED, "同上"),
-    ("03_feature_engineering_xgb", "fit_apply_te_cv"):          (REJECTED, "同上"),
-    ("03_feature_engineering_xgb", "fit_apply_te_cv_nested"):   (REJECTED, "単一 smooth 版。Triple TE が置き換え"),
-    ("03_feature_engineering_xgb", "fit_target_encoding_multi"): (REJECTED, "同上(Out-of-Fold でない複数smooth版)"),
-    ("03_feature_engineering_xgb", "apply_target_encoding_multi"): (REJECTED, "同上"),
     ("03_feature_engineering_xgb", "prepare_te_codes"):         (SUPPORT,  "TEキーの整数コード化(高速化)"),
     ("03_feature_engineering_xgb", "fit_apply_te_cv_nested_multi"): (ADOPTED, "本番の Out-of-Fold Triple TE"),
-    ("03_feature_engineering_xgb", "add_row_aggregates"):       (REJECTED, "行方向の集約。効果なし"),
-    ("03_feature_engineering_xgb", "dedup_columns"):            (ADOPTED,  "重複24列を除外(93→69列)。単体 +0.000010 / アンサンブル +0.000002"),
+    ("03_feature_engineering_xgb", "te_plan"):                (ADOPTED,  "本番の Target Encoding の設計(キーと平滑化)"),
+    ("03_feature_engineering_xgb", "fit_apply_te_cv_nested_plan"): (ADOPTED,  "te_plan() のとおりに Target Encoding を作る"),
 
-    # ---- 03_feature_engineering_catboost.py (本番: --fe te_all,catify,digits,skeys,te3 --dedup --lean) ----
-    ("03_feature_engineering_catboost", "add_arithmetic"):      (REJECTED, "四則演算 -0.00099。最も悪化"),
-    ("03_feature_engineering_catboost", "add_interactions"):    (REJECTED, "交互作用キー。全滅"),
+    # ---- 03_feature_engineering_catboost.py (本番: 04 が te_plan() どおりに必要な列だけ作る) ----
     ("03_feature_engineering_catboost", "add_digits"):          (ADOPTED,  "+0.00061。既定ビン64が粗いため効いた"),
     ("03_feature_engineering_catboost", "drop_constant"):       (SUPPORT,  "定数列の除去"),
     ("03_feature_engineering_catboost", "add_smooth_keys"):     (ADOPTED,  "TEキー4本を追加 (skeys)"),
-    ("03_feature_engineering_catboost", "add_count_encoding"):  (REJECTED, "内部の Ordered TS と重複して無効"),
     ("03_feature_engineering_catboost", "target_encode"):       (ADOPTED,  "te_all + te3 (Triple smooth)"),
-    ("03_feature_engineering_catboost", "lean_columns"):          (ADOPTED,  "エンコーディングを絞る12列(55→43列)。単体 +0.000036 (z=+1.97)"),
-    ("03_feature_engineering_catboost", "dedup_columns"):         (ADOPTED,  "重複25列を除外(80→55列)。単体 -0.000002 (z=-0.14) で変わらず"),
     ("03_feature_engineering_catboost", "cast_to_str"):         (ADOPTED,  "catify +0.00170。CatBoost 単体最大"),
+    ("03_feature_engineering_catboost", "te_plan"):           (ADOPTED,  "本番の Target Encoding の設計(キーと平滑化)"),
+    ("03_feature_engineering_catboost", "target_encode_plan"): (ADOPTED,  "te_plan() のとおりに Target Encoding を作る"),
 
     # ---- 03_feature_engineering_realmlp.py (本番: 追加フラグなし) ----
     ("03_feature_engineering_realmlp", "build_features"):       (ADOPTED,  "catify / ビン分割 / Smooth Keys を一括生成"),
-    ("03_feature_engineering_realmlp", "build_te_key_frame"):   (REJECTED, "--exact-te 用。単体 +0.000156 だがアンサンブル寄与ゼロ"),
-    ("03_feature_engineering_realmlp", "target_encode_highcard"): (REJECTED, "同上。GBDTとの相関が上がり多様性を損なう"),
     ("03_feature_engineering_realmlp", "load_orig"):            (ADOPTED,  "元データ由来の org_mean。アンサンブル +0.000022"),
 
     # ---- 03_feature_engineering_all.py (横断カタログ。どのモデルの本番でも import されない) ----
@@ -200,6 +174,36 @@ FUNC_STATUS = {
     ("03_feature_engineering_all", "interaction_keys"):         (REJECTED, "交互作用キー。全滅"),
     ("03_feature_engineering_all", "cat_pairs"):                (REJECTED, "同上のペア列挙"),
     ("03_feature_engineering_all", "add_income_neighborhood"): (REJECTED, "年収の近傍統計。GBDT は誤差、RealMLP は単体 +0.000077 だがアンサンブル ±0"),
+
+    # ---- 03_feature_engineering_all.py の「不採用(記録)」(各モデルから移した関数。名前の末尾がもとのモデル) ----
+    ("03_feature_engineering_all", "add_arithmetic_meaningful_lgbm"): (REJECTED, "四則演算 -0.00014。打ち止め"),
+    ("03_feature_engineering_all", "add_arithmetic_all_pairs_lgbm"): (REJECTED, "全ペア四則演算。同上"),
+    ("03_feature_engineering_all", "add_group_means_lgbm"):         (REJECTED, "行方向の平均。効果なし"),
+    ("03_feature_engineering_all", "add_subsidy_products_lgbm"): (REJECTED, "補助金との積。+0.000009 (z=+0.65) で誤差"),
+    ("03_feature_engineering_all", "pair_keys_lgbm"):               (REJECTED, "2列交互作用TE(全ペア)。全滅。自宅充電×自宅スタンド数の1組だけは te2home で最終構成に採用"),
+    ("03_feature_engineering_all", "triple_keys_lgbm"):             (REJECTED, "3列交互作用TE。全滅"),
+    ("03_feature_engineering_all", "all_columns_key_lgbm"):         (REJECTED, "行フィンガープリント。全行ユニークで原理的に不可"),
+    ("03_feature_engineering_all", "fingerprint_key_lgbm"):         (REJECTED, "同上(部分集合版)"),
+    ("03_feature_engineering_all", "make_base_xgb"):                (REJECTED, "native category の素のフレーム。ordinal を採用したので使っていない"),
+    ("03_feature_engineering_all", "as_native_category_xgb"):       (REJECTED, "ordinal と差なし。非相関性を狙い ordinal を採用"),
+    ("03_feature_engineering_all", "as_onehot_xgb"):                (REJECTED, "列が増えるだけで効果なし"),
+    ("03_feature_engineering_all", "add_arithmetic_xgb"):           (REJECTED, "四則演算。打ち止め"),
+    ("03_feature_engineering_all", "all_numeric_pairs_xgb"):        (REJECTED, "同上のペア列挙"),
+    ("03_feature_engineering_all", "make_interaction_keys_xgb"):    (REJECTED, "交互作用キー。全滅"),
+    ("03_feature_engineering_all", "cat_pairs_xgb"):                (REJECTED, "同上のペア列挙"),
+    ("03_feature_engineering_all", "fit_target_encoding_xgb"):      (REJECTED, "Out-of-Fold でない旧版。Out-of-Fold 版が +0.00108 で置き換え"),
+    ("03_feature_engineering_all", "apply_target_encoding_xgb"):    (REJECTED, "同上"),
+    ("03_feature_engineering_all", "fit_apply_te_cv_xgb"):          (REJECTED, "同上"),
+    ("03_feature_engineering_all", "fit_apply_te_cv_nested_xgb"):   (REJECTED, "単一 smooth 版。Triple TE が置き換え"),
+    ("03_feature_engineering_all", "fit_target_encoding_multi_xgb"): (REJECTED, "同上(Out-of-Fold でない複数smooth版)"),
+    ("03_feature_engineering_all", "apply_target_encoding_multi_xgb"): (REJECTED, "同上"),
+    ("03_feature_engineering_all", "add_row_aggregates_xgb"):       (REJECTED, "行方向の集約。効果なし"),
+    ("03_feature_engineering_all", "add_arithmetic_catboost"):      (REJECTED, "四則演算 -0.00099。最も悪化"),
+    ("03_feature_engineering_all", "add_interactions_catboost"):    (REJECTED, "交互作用キー。全滅"),
+    ("03_feature_engineering_all", "add_count_encoding_catboost"):  (REJECTED, "内部の Ordered TS と重複して無効"),
+    ("03_feature_engineering_all", "build_te_key_frame_realmlp"):   (REJECTED, "--exact-te 用。単体 +0.000156 だがアンサンブル寄与ゼロ"),
+    ("03_feature_engineering_all", "target_encode_highcard_realmlp"): (REJECTED, "同上。GBDTとの相関が上がり多様性を損なう"),
+    ("03_feature_engineering_all", "realmlp_rejected_extras"): (REJECTED, "RealMLP の digit・通勤距離÷年齢・通勤距離/5。いずれも誤差")
 }
 
 

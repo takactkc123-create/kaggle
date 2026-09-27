@@ -1,17 +1,23 @@
-"""XGBoost training / evaluation script for S6E9.
+"""XGBoost の学習・評価(S6E9)。
 
-Imports FE functions from 03_feature_engineering_xgb.py, runs StratifiedKFold CV and
-(optionally) writes submission / OOF / importance artifacts.
+`03_feature_engineering_xgb.py` の関数で**本番で使う列だけ**を作り、
+StratifiedKFold(n_splits=5, shuffle=True, random_state=42) で学習する。--save で提出ファイル・OOF・重要度を保存する。
 
-Usage:
-    uv run 04_train_and_evaluate_xgb.py --pattern base
-    uv run 04_train_and_evaluate_xgb.py --pattern te_exact --folds 3 --sample 0.3
-    uv run 04_train_and_evaluate_xgb.py --pattern final --save
+作る列(69 列)
+    生の 13 列(カテゴリは整数コード)
+    + digit(fe.DIGIT_COLS)
+    + Count(全 13 列)
+    + Target Encoding(fe.te_plan(): Smooth Keys 4本・生の 13 列。fold 内で Out-of-Fold)
+
+例
+    uv run src/04_train_and_evaluate_xgb.py --max-bin 1024 --set-param colsample_bytree=0.3 --set-param max_depth=5 \\
+        --learning-rate 0.03 --n-estimators 8000 --early-stopping 200 --n-jobs 7 --save
 """
 
 from __future__ import annotations
 
 import argparse
+import importlib
 import os
 import time
 
@@ -21,302 +27,49 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 from xgboost import XGBClassifier
 
-import importlib
 fe = importlib.import_module("03_feature_engineering_xgb")
-fe_all = importlib.import_module("03_feature_engineering_all")   # 年収の近傍統計(--nbr)用
 
-TARGET = fe.TARGET
-
-
-# ---------------------------------------------------------------------------
-# pattern definitions
-# ---------------------------------------------------------------------------
-# Each pattern is a dict describing how to build the feature matrix.
-#   enc          : "cat" (native category) | "ord" | "ohe"
-#   arith        : None | "meaningful" | "all"
-#   row_agg      : bool
-#   ce_cols      : list of raw columns to count-encode (target-free)
-#   ce_inter     : list of (a, b) pairs to count-encode as interaction keys
-#   te_cols      : list of raw columns to target-encode (fold-safe)
-#   te_inter     : list of (a, b) pairs to target-encode as interaction keys
-#   te_smoothing : smoothing strength
-ALL_COLS = fe.NUMERIC_COLS + fe.CATEGORICAL_COLS
-LOWCARD_ALL = fe.LOW_CARD_NUMERIC + fe.CATEGORICAL_COLS
+TARGET = "Will_Buy_EV"
 
 
-# 実験パターンの設定を既定値から作り、指定分だけ上書きする
-def _p(**kw):
-    base = dict(
-        enc="cat",
-        arith=None,
-        row_agg=False,
-        ce_cols=None,
-        ce_inter=None,
-        te_cols=None,
-        te_inter=None,
-        te_smoothing=20.0,
-        te_smoothings=None,   # list -> Triple TE (one column per smoothing)
-        te_min_samples=1,
-        te_nested=False,
-        drop_raw_cat=False,
-        digits=False,         # digit features (x // 10**k) % 10
-        smooth_keys=False,    # coarse income/commute keys fed to TE (and CE)
-        smooth_keys_ce=False,
-    )
-    base.update(kw)
-    return base
+# fold によらない部分(生の列・digit・Count)と、Target Encoding のキーの整数コードを作る
+def prepare(train: pd.DataFrame, test: pd.DataFrame):
+    cols = fe.ALL_COLS
+    X, X_test = train[cols].copy(), test[cols].copy()
+    X, X_test = fe.add_digit_features(X, X_test, train, test, cols=fe.DIGIT_COLS)
+    X, X_test = fe.add_count_encoding(X, X_test, train, test, cols)
+    X, X_test = fe.as_ordinal(X, X_test, fe.CATEGORICAL_COLS)
+
+    sk_tr, sk_te = fe.make_smooth_keys(train, test)
+    src_tr = pd.concat([sk_tr, train[cols]], axis=1)
+    src_te = pd.concat([sk_te, test[cols]], axis=1)
+    plan = fe.te_plan(list(sk_tr.columns))
+    codes = fe.prepare_te_codes(src_tr, src_te, [c for c, _ in plan])
+    return X, X_test, codes, plan
 
 
-HIGH_CARD_NUMERIC = ["Annual_Income_USD", "Daily_Commute_km"]
-MID_CARD = HIGH_CARD_NUMERIC + ["Age"]
-
-
-PATTERNS = {
-    # --- encoding-style comparison (XGBoost specific) ---
-    "base": _p(),
-    "ord": _p(enc="ord"),
-    "ohe": _p(enc="ohe"),
-    # --- arithmetic ---
-    "arith": _p(arith="meaningful"),
-    "arith_all": _p(arith="all"),
-    "row_agg": _p(row_agg=True),
-    # --- count / frequency encoding ---
-    "ce_cat": _p(ce_cols=fe.CATEGORICAL_COLS),
-    "ce_all": _p(ce_cols=ALL_COLS),
-    "ce_inter": _p(ce_inter=fe.cat_pairs()),
-    # --- target encoding ---
-    "te_cat": _p(te_cols=fe.CATEGORICAL_COLS),
-    "te_lowcard": _p(te_cols=LOWCARD_ALL),
-    "te_exact": _p(te_cols=ALL_COLS),
-    "te_exact_s2": _p(te_cols=ALL_COLS, te_smoothing=2.0),
-    "te_exact_s100": _p(te_cols=ALL_COLS, te_smoothing=100.0),
-    "te_inter": _p(te_inter=fe.cat_pairs()),
-    "te_inter_all": _p(te_inter=fe.cat_pairs(ALL_COLS)),
-    # --- combinations (filled in below / via CLI) ---
-    "te_exact_inter": _p(te_cols=ALL_COLS, te_inter=fe.cat_pairs()),
-    "te_exact_ce": _p(te_cols=ALL_COLS, ce_cols=ALL_COLS),
-    "te_exact_ord": _p(enc="ord", te_cols=ALL_COLS),
-    "te_exact_ohe": _p(enc="ohe", te_cols=ALL_COLS),
-    # --- round 2: isolate the high-cardinality numeric TE effect ---
-    "te_high": _p(te_cols=HIGH_CARD_NUMERIC),
-    "te_mid": _p(te_cols=MID_CARD),
-    "te_num": _p(te_cols=fe.NUMERIC_COLS),
-    "te_exact_s5": _p(te_cols=ALL_COLS, te_smoothing=5.0),
-    "te_exact_s50": _p(te_cols=ALL_COLS, te_smoothing=50.0),
-    "te_exact_ms10": _p(te_cols=ALL_COLS, te_min_samples=10),
-    # high-card numeric x categorical interaction TE
-    "te_hx_cat": _p(
-        te_cols=ALL_COLS,
-        te_inter=[(n, c) for n in HIGH_CARD_NUMERIC for c in fe.CATEGORICAL_COLS],
-    ),
-    "te_hx_home": _p(
-        te_cols=ALL_COLS,
-        te_inter=[(n, c) for n in HIGH_CARD_NUMERIC
-                  for c in ("Home_Charging_Possible", "Subsidy_Available")],
-    ),
-    "te_exact_arith": _p(te_cols=ALL_COLS, arith="meaningful"),
-    "te_exact_ce_high": _p(te_cols=ALL_COLS, ce_cols=MID_CARD),
-    # --- round 3: tune the winning high-cardinality TE ---
-    "te_high_s5": _p(te_cols=HIGH_CARD_NUMERIC, te_smoothing=5.0),
-    "te_high_s50": _p(te_cols=HIGH_CARD_NUMERIC, te_smoothing=50.0),
-    "te_high_s100": _p(te_cols=HIGH_CARD_NUMERIC, te_smoothing=100.0),
-    "te_high_ord": _p(enc="ord", te_cols=HIGH_CARD_NUMERIC),
-    "te_high_ce": _p(te_cols=HIGH_CARD_NUMERIC, ce_cols=HIGH_CARD_NUMERIC),
-    # --- round 4: nested (inner-OOF) target encoding ---
-    "nte_exact": _p(te_cols=ALL_COLS, te_nested=True),
-    "nte_exact_ce": _p(te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS),
-    "nte_high": _p(te_cols=HIGH_CARD_NUMERIC, te_nested=True),
-    # XGBoost-specific differentiation: ordinal encoding instead of native
-    # category dtype (LightGBM uses native category -> extra ensemble diversity)
-    "nte_exact_ce_ord": _p(
-        enc="ord", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS
-    ),
-    "nte_exact_ce_ohe": _p(
-        enc="ohe", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS
-    ),
-    # final configuration (set after round 4)
-    "final": _p(enc="ord", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS),
-    # --- round 5: reference_URL.md follow-up -------------------------------
-    # Triple TE = smooth auto / 10 / 100 as three separate columns
-    "tte": _p(
-        enc="ord", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS,
-        te_smoothings=("auto", 10.0, 100.0),
-    ),
-    "tte20": _p(
-        enc="ord", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS,
-        te_smoothings=("auto", 20.0, 100.0),
-    ),
-    # reference = `final`, but routed through the fast numpy TE path
-    # (mathematically identical to te_nested with te_smoothing=20)
-    "ref20": _p(
-        enc="ord", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS,
-        te_smoothings=(20.0,),
-    ),
-    # Smooth Keys only (single smoothing, m=20) -> isolates the key effect
-    "sk": _p(
-        enc="ord", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS,
-        te_smoothings=(20.0,), smooth_keys=True,
-    ),
-    "dig_only": _p(
-        enc="ord", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS,
-        te_smoothings=(20.0,), digits=True,
-    ),
-    # Triple TE + Smooth Keys
-    "tte_sk": _p(
-        enc="ord", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS,
-        te_smoothings=("auto", 10.0, 100.0), smooth_keys=True,
-    ),
-    "tte_sk_ce": _p(
-        enc="ord", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS,
-        te_smoothings=("auto", 10.0, 100.0), smooth_keys=True, smooth_keys_ce=True,
-    ),
-    # digit features (use together with --max-bin 1024)
-    "dig": _p(enc="ord", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS,
-              te_smoothings=(20.0,), digits=True),
-    # everything
-    "tte_sk_dig": _p(
-        enc="ord", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS,
-        te_smoothings=("auto", 10.0, 100.0), smooth_keys=True, digits=True,
-    ),
-    # 2026-09-27: EDA で見つかった唯一の交互作用(自宅充電の可否 × 自宅近くのスタンド数)を再検証
-    "tte_sk_dig_home": _p(
-        enc="ord", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS,
-        te_smoothings=("auto", 10.0, 100.0), smooth_keys=True, digits=True,
-        te_inter=[("Home_Charging_Possible", "Charging_Stations_Near_Home")],
-    ),
-    # 2026-09-28: 列を絞った後の構成で、補助金 × 環境意識・収入・航続距離の不安を再検証
-    "tte_sk_dig_subsidy": _p(
-        enc="ord", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS,
-        te_smoothings=("auto", 10.0, 100.0), smooth_keys=True, digits=True,
-        te_inter=[("Subsidy_Available", c) for c in
-                  ("Environmental_Concern_Level", "Annual_Income_USD", "Range_Anxiety_Level")],
-    ),
-    # --- 2026-09-21: 誤差として見送った「符号がプラス」の施策の再検証 ---
-    # One-Hot は単体で +0.00005 だった。本番構成(Triple TE + digit)の上で測り直す
-    "tte_sk_dig_ohe": _p(
-        enc="ohe", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS,
-        te_smoothings=("auto", 10.0, 100.0), smooth_keys=True, digits=True,
-    ),
-    # 四則演算は単体で +0.00004 だった。同上
-    "tte_sk_dig_arith": _p(
-        enc="ord", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS,
-        te_smoothings=("auto", 10.0, 100.0), smooth_keys=True, digits=True,
-        arith="meaningful",
-    ),
-    # no count encoding (re-ablation once max_bin is raised)
-    "tte_sk_dig_noce": _p(
-        enc="ord", te_cols=ALL_COLS, te_nested=True,
-        te_smoothings=("auto", 10.0, 100.0), smooth_keys=True, digits=True,
-    ),
-}
-
-
-# ---------------------------------------------------------------------------
-# feature building
-# ---------------------------------------------------------------------------
-
-
-# fold によらない特徴量(生の列・digit・Count など)を組み上げる
-def build_static(train_raw, test_raw, cfg):
-    """Build the fold-independent part of the feature matrix."""
-    cat_cols = list(fe.CATEGORICAL_COLS)
-    tr = train_raw[fe.NUMERIC_COLS + cat_cols].copy()
-    te = test_raw[fe.NUMERIC_COLS + cat_cols].copy()
-
-    if cfg["arith"] is not None:
-        pairs = fe.MEANINGFUL_PAIRS if cfg["arith"] == "meaningful" else fe.all_numeric_pairs()
-        tr, te = fe.add_arithmetic(tr, te, train_raw, test_raw, pairs)
-
-    if cfg["row_agg"]:
-        tr, te = fe.add_row_aggregates(tr, te, train_raw, test_raw)
-
-    if cfg["digits"]:
-        tr, te = fe.add_digit_features(tr, te, train_raw, test_raw)
-
-    if cfg["ce_cols"]:
-        tr, te = fe.add_count_encoding(tr, te, train_raw, test_raw, cfg["ce_cols"])
-
-    if cfg["smooth_keys"] and cfg["smooth_keys_ce"]:
-        ktr, kte = fe.make_smooth_keys(train_raw, test_raw)
-        tr, te = fe.add_count_encoding(tr, te, ktr, kte, list(ktr.columns))
-
-    if cfg["ce_inter"]:
-        ktr, kte = fe.make_interaction_keys(train_raw, test_raw, cfg["ce_inter"])
-        tr, te = fe.add_count_encoding(tr, te, ktr, kte, list(ktr.columns))
-
-    # encoding style for the raw categorical columns
-    if cfg["enc"] == "cat":
-        tr, te = fe.as_native_category(tr, te, cat_cols)
-    elif cfg["enc"] == "ord":
-        tr, te = fe.as_ordinal(tr, te, cat_cols)
-    elif cfg["enc"] == "ohe":
-        tr, te = fe.as_onehot(tr, te, cat_cols)
-    else:
-        raise ValueError(cfg["enc"])
-
-    if cfg["drop_raw_cat"] and cfg["enc"] != "ohe":
-        tr = tr.drop(columns=cat_cols)
-        te = te.drop(columns=cat_cols)
-
-    return tr, te
-
-
-# fold ごとの Target Encoding に使うキーのフレームと列名を返す
-def build_te_sources(train_raw, test_raw, cfg):
-    """Raw frames (train, test) + column list used for fold-wise target encoding."""
-    if not cfg["te_cols"] and not cfg["te_inter"] and not cfg["smooth_keys"]:
-        return None, None, []
-    parts_tr, parts_te, cols = [], [], []
-    if cfg["smooth_keys"]:
-        ktr, kte = fe.make_smooth_keys(train_raw, test_raw)
-        parts_tr.append(ktr)
-        parts_te.append(kte)
-        cols += list(ktr.columns)
-    if cfg["te_cols"]:
-        parts_tr.append(train_raw[cfg["te_cols"]])
-        parts_te.append(test_raw[cfg["te_cols"]])
-        cols += list(cfg["te_cols"])
-    if cfg["te_inter"]:
-        ktr, kte = fe.make_interaction_keys(train_raw, test_raw, cfg["te_inter"])
-        parts_tr.append(ktr)
-        parts_te.append(kte)
-        cols += list(ktr.columns)
-    return (
-        pd.concat(parts_tr, axis=1),
-        pd.concat(parts_te, axis=1),
-        cols,
-    )
-
-
-# ---------------------------------------------------------------------------
-# CV
-# ---------------------------------------------------------------------------
+# 1 つの fold の学習行・検証行・test の行列を作る(Target Encoding は学習行だけで作る)
+def fold_matrices(prep, y, tr_idx, va_idx):
+    X, X_test, (c_tr, c_te, ncats), plan = prep
+    te_tr, te_va, te_te = fe.fit_apply_te_cv_nested_plan(c_tr, c_te, ncats, y, plan, tr_idx, va_idx)
+    X_tr = pd.concat([X.iloc[tr_idx].reset_index(drop=True), te_tr.reset_index(drop=True)], axis=1)
+    X_va = pd.concat([X.iloc[va_idx].reset_index(drop=True), te_va.reset_index(drop=True)], axis=1)
+    X_te = pd.concat([X_test.reset_index(drop=True), te_te.reset_index(drop=True)], axis=1)
+    return X_tr, X_va, X_te
 
 
 # XGBoost を 5-fold で学習し、OOF 予測と test 予測を返す
-def run_cv(cfg, args):
+def run_cv(args):
     train = pd.read_csv("data/train.csv")
     test = pd.read_csv("data/test.csv")
-
     if args.sample < 1.0:
         train = train.sample(frac=args.sample, random_state=42).reset_index(drop=True)
-
     y = (train[TARGET] == "Yes").astype(int)
 
-    X, X_test = build_static(train, test, cfg)
-    te_src_tr, te_src_te, te_cols = build_te_sources(train, test, cfg)
-    te_codes = None
-    if te_cols and cfg["te_smoothings"]:
-        te_codes = fe.prepare_te_codes(te_src_tr, te_src_te, te_cols)
-
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    splits = list(skf.split(X, y))
-    if args.folds < 5:
-        splits = splits[: args.folds]
+    prep = prepare(train, test)
+    splits = list(StratifiedKFold(n_splits=5, shuffle=True, random_state=42).split(prep[0], y))[: args.folds]
 
     params = dict(random_state=42, tree_method="hist", n_jobs=args.n_jobs)
-    if cfg["enc"] == "cat":
-        params["enable_categorical"] = True
     if args.max_bin is not None:
         params["max_bin"] = args.max_bin
     for kv in args.set_param:
@@ -331,82 +84,24 @@ def run_cv(cfg, args):
     if args.learning_rate is not None:
         params["learning_rate"] = args.learning_rate
     if args.early_stopping:
-        # NOTE: the stopping point is chosen on the validation fold, so the
-        # resulting OOF AUC is mildly optimistic. Use `--n-estimators <fixed>`
-        # without --early-stopping for a fully clean estimate.
+        # 止める本数は検証 fold で決まるので、OOF AUC はわずかに楽観的になる
         params["early_stopping_rounds"] = args.early_stopping
         params["eval_metric"] = "auc"
 
-    n_te_out = len(te_cols) * (len(cfg["te_smoothings"]) if cfg["te_smoothings"] else 1)
     oof = np.full(len(train), np.nan)
     test_pred = np.zeros(len(test))
-    n_nbr = 0 if args.nbr == "none" else len(fe_all.NEIGHBOR_RADII) * (3 if args.nbr == "slope" else 1)
-    importances = np.zeros(X.shape[1] + n_te_out + n_nbr)
-    feat_names = None
-    best_iters = []
+    importances, feat_names, best_iters = None, None, []
     t0 = time.time()
 
     for fold, (tr_idx, va_idx) in enumerate(splits):
-        X_tr = X.iloc[tr_idx]
-        X_va = X.iloc[va_idx]
-        X_te = X_test
-
-        if te_cols:
-            if cfg["te_smoothings"]:
-                if not cfg["te_nested"]:
-                    raise ValueError("te_smoothings requires te_nested=True")
-                c_tr, c_te, ncats = te_codes
-                te_tr, te_va, te_te = fe.fit_apply_te_cv_nested_multi(
-                    c_tr, c_te, ncats, y, te_cols, tr_idx, va_idx,
-                    cfg["te_smoothings"], cfg["te_min_samples"],
-                )
-            else:
-                te_fn = fe.fit_apply_te_cv_nested if cfg["te_nested"] else fe.fit_apply_te_cv
-                te_tr, te_va, te_te = te_fn(
-                    te_src_tr, te_src_te, y, te_cols, tr_idx, va_idx,
-                    cfg["te_smoothing"], cfg["te_min_samples"],
-                )
-            X_tr = pd.concat([X_tr.reset_index(drop=True), te_tr.reset_index(drop=True)], axis=1)
-            X_va = pd.concat([X_va.reset_index(drop=True), te_va.reset_index(drop=True)], axis=1)
-            X_te = pd.concat([X_test.reset_index(drop=True), te_te.reset_index(drop=True)], axis=1)
-
-        if args.nbr != "none":
-            # 年収の近傍統計(近くの値の購入率・傾き・曲率)。fold 内で作りリークを防ぐ
-            income = train["Annual_Income_USD"].to_numpy()
-            nb_tr, (nb_va, nb_te) = fe_all.add_income_neighborhood(
-                income[tr_idx], y.to_numpy()[tr_idx],
-                [income[va_idx], test["Annual_Income_USD"].to_numpy()],
-                with_slope=(args.nbr == "slope"), seed=42,
-            )
-            X_tr = pd.concat([X_tr.reset_index(drop=True), nb_tr], axis=1)
-            X_va = pd.concat([X_va.reset_index(drop=True), nb_va], axis=1)
-            X_te = pd.concat([X_te.reset_index(drop=True), nb_te], axis=1)
-
-        if args.dedup:
-            # 重複している列を外す(平滑化の重複 TE・値が同じ digit)
-            drop = [c for c in fe.dedup_columns() if c in X_tr.columns]
-            X_tr, X_va, X_te = (f.drop(columns=drop) for f in (X_tr, X_va, X_te))
-            if importances.shape[0] != X_tr.shape[1]:
-                importances = np.zeros(X_tr.shape[1])
-
-        if args.drop_feats:
-            extra = [c.strip() for c in args.drop_feats.split(",") if c.strip()]
-            missing = [c for c in extra if c not in X_tr.columns]
-            if missing:
-                raise SystemExit(f"--drop-feats に存在しない列: {missing}")
-            X_tr, X_va, X_te = (f.drop(columns=extra) for f in (X_tr, X_va, X_te))
-            if importances.shape[0] != X_tr.shape[1]:
-                importances = np.zeros(X_tr.shape[1])
+        X_tr, X_va, X_te = fold_matrices(prep, y, tr_idx, va_idx)
 
         if args.dump_features:
             import feature_catalog
-            feature_catalog.dump(
-                f"xgb{args.out_suffix}", "XGBoost", X_tr.columns,
-                cat_features=[c for c in X_tr.columns
-                              if str(X_tr[c].dtype) == "category"],
-                note=f"pattern={args.pattern} dedup={args.dedup}",
-            )
-            return
+            feature_catalog.dump(f"xgb{args.out_suffix}", "XGBoost", X_tr.columns,
+                                 cat_features=[c for c in X_tr.columns if str(X_tr[c].dtype) == "category"],
+                                 note="本番の構成(fe.te_plan())")
+            return None
 
         model = XGBClassifier(**params)
         if args.early_stopping:
@@ -417,6 +112,8 @@ def run_cv(cfg, args):
 
         oof[va_idx] = model.predict_proba(X_va)[:, 1]
         test_pred += model.predict_proba(X_te)[:, 1] / len(splits)
+        if importances is None:
+            importances = np.zeros(X_tr.shape[1])
         importances += model.feature_importances_ / len(splits)
         feat_names = list(X_tr.columns)
         bi = f" best_iter={best_iters[-1]}" if best_iters else ""
@@ -424,34 +121,27 @@ def run_cv(cfg, args):
 
     mask = ~np.isnan(oof)
     auc = roc_auc_score(y[mask], oof[mask])
-    tag = (f" lr={params.get('learning_rate', 'default')}"
-           f" n_est={params.get('n_estimators', 'default')}"
+    tag = (f" lr={params.get('learning_rate', 'default')} n_est={params.get('n_estimators', 'default')}"
            f" max_bin={params.get('max_bin', 'default')}")
     if best_iters:
         tag += f" best_iter_mean={np.mean(best_iters):.0f} best_iters={best_iters}"
-    print(f"PATTERN={args.pattern}  n_feat={len(feat_names)}  OOF AUC: {auc:.5f}  "
-          f"({time.time() - t0:.0f}s, folds={len(splits)}, sample={args.sample}){tag}", flush=True)
+    print(f"n_feat={len(feat_names)}  OOF AUC: {auc:.5f}  ({time.time() - t0:.0f}s, folds={len(splits)}, "
+          f"sample={args.sample}){tag}", flush=True)
 
     if args.save:
-        save_artifacts(
-            train, test, y, oof, test_pred, importances, feat_names, auc, args.out_suffix
-        )
+        save_artifacts(test, oof, test_pred, importances, feat_names, auc, args.out_suffix)
     return auc
 
 
 # OOF・test 予測・提出ファイル・重要度の図を保存する
-def save_artifacts(train, test, y, oof, test_pred, importances, feat_names, auc, suffix=""):
+def save_artifacts(test, oof, test_pred, importances, feat_names, auc, suffix=""):
     for d in ("submit", "oof", "importance"):
         os.makedirs(d, exist_ok=True)
-
-    pd.DataFrame({"id": test["id"], TARGET: test_pred}).to_csv(
-        f"submit/submission_xgb{suffix}.csv", index=False
-    )
+    pd.DataFrame({"id": test["id"], TARGET: test_pred}).to_csv(f"submit/submission_xgb{suffix}.csv", index=False)
     np.save(f"oof/oof_xgb{suffix}.npy", oof)
     np.save(f"oof/pred_xgb{suffix}.npy", test_pred)
 
     import matplotlib
-
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -464,7 +154,6 @@ def save_artifacts(train, test, y, oof, test_pred, importances, feat_names, auc,
     fig.tight_layout()
     fig.savefig(f"importance/importance_xgb{suffix}.png", dpi=130)
     plt.close(fig)
-
     print(f"saved: submit/submission_xgb{suffix}.csv, oof/oof_xgb{suffix}.npy, "
           f"oof/pred_xgb{suffix}.npy, importance/importance_xgb{suffix}.png", flush=True)
 
@@ -472,46 +161,21 @@ def save_artifacts(train, test, y, oof, test_pred, importances, feat_names, auc,
 # 引数を読み、学習・評価・保存を行う
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pattern", default="base")
-    ap.add_argument("--folds", type=int, default=5)
-    ap.add_argument("--sample", type=float, default=1.0)
+    ap.add_argument("--folds", type=int, default=5, help="実際に学習する fold 数(分け方は常に 5)")
+    ap.add_argument("--sample", type=float, default=1.0, help="スクリーニング用に train を割合で間引く")
     ap.add_argument("--n-estimators", type=int, default=None)
     ap.add_argument("--learning-rate", type=float, default=None)
-    ap.add_argument(
-        "--early-stopping",
-        type=int,
-        default=0,
-        help="early_stopping_rounds on the validation fold (0 = off)",
-    )
-    ap.add_argument("--max-bin", type=int, default=None,
-                    help="XGBoost max_bin (tree_method=hist). 1024 per reference_URL.md")
+    ap.add_argument("--early-stopping", type=int, default=0,
+                    help="検証 fold の AUC が指定本数改善しなければ止める(0 = 使わない)")
+    ap.add_argument("--max-bin", type=int, default=None, help="XGBoost の max_bin(本番は 1024)")
     ap.add_argument("--set-param", action="append", default=[], metavar="KEY=VALUE",
-                    help="extra XGBClassifier param, repeatable")
+                    help="XGBClassifier に渡す追加のパラメータ(複数回指定できる)")
     ap.add_argument("--n-jobs", type=int, default=-1)
-    ap.add_argument("--save", action="store_true")
-    ap.add_argument(
-        "--nbr", choices=["none", "rate", "slope"], default="none",
-        help="年収の近傍統計を足す。rate=近くの値の購入率のみ / slope=+傾き・曲率",
-    )
-    ap.add_argument(
-        "--dump-features", action="store_true",
-        help="学習せず、fold1 の特徴量の列名を docs/features_<tag>.json に書いて終了する",
-    )
-    ap.add_argument("--drop-feats", default="", help="カンマ区切りで指定した列を学習から外す(エンコーディングの切り分け用)。存在しない列名なら止まる")
-    ap.add_argument(
-        "--dedup", action="store_true",
-        help="他の列と同じ情報しか持たない列(fe.dedup_columns())を学習から外す",
-    )
-    ap.add_argument(
-        "--out-suffix",
-        default="",
-        help="suffix for artifact filenames, e.g. '_lr05' -> oof/oof_xgb_lr05.npy",
-    )
-    args = ap.parse_args()
-
-    if args.pattern not in PATTERNS:
-        raise SystemExit(f"unknown pattern: {args.pattern}\navailable: {sorted(PATTERNS)}")
-    run_cv(PATTERNS[args.pattern], args)
+    ap.add_argument("--save", action="store_true", help="提出ファイル・OOF・重要度を保存する")
+    ap.add_argument("--dump-features", action="store_true",
+                    help="学習せず、fold 1 の列名を docs/features_xgb<suffix>.json に書いて終了する")
+    ap.add_argument("--out-suffix", default="", help="成果物のファイル名の接尾辞。例 '_lr05' -> oof/oof_xgb_lr05.npy")
+    run_cv(ap.parse_args())
 
 
 if __name__ == "__main__":

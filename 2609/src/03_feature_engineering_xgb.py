@@ -53,29 +53,6 @@ LOW_CARD_NUMERIC = [
 # ---------------------------------------------------------------------------
 
 
-# 数値列はそのまま、カテゴリ列は category 型にした基本のフレームを作る
-def make_base(train: pd.DataFrame, test: pd.DataFrame):
-    """Baseline feature frames: numeric as-is + categorical as pandas Categorical.
-
-    Mirrors 02_baseline_xgb.py (enable_categorical=True path).
-    """
-    tr = train[NUMERIC_COLS + CATEGORICAL_COLS].copy()
-    te = test[NUMERIC_COLS + CATEGORICAL_COLS].copy()
-    return as_native_category(tr, te, CATEGORICAL_COLS)
-
-
-# カテゴリ列を train・test 共通の水準で category 型にする
-def as_native_category(tr: pd.DataFrame, te: pd.DataFrame, cols):
-    """Align category sets across train/test and cast to pandas Categorical."""
-    tr = tr.copy()
-    te = te.copy()
-    for c in cols:
-        cats = pd.concat([tr[c].astype(str), te[c].astype(str)]).astype("category").cat.categories
-        tr[c] = pd.Categorical(tr[c].astype(str), categories=cats)
-        te[c] = pd.Categorical(te[c].astype(str), categories=cats)
-    return tr, te
-
-
 # カテゴリ列を整数コードにする
 def as_ordinal(tr: pd.DataFrame, te: pd.DataFrame, cols):
     """Ordinal (label) encoding -> plain int codes. XGBoost treats them as numeric."""
@@ -87,75 +64,6 @@ def as_ordinal(tr: pd.DataFrame, te: pd.DataFrame, cols):
         tr[c] = tr[c].astype(str).map(mapping).astype("int16")
         te[c] = te[c].astype(str).map(mapping).astype("int16")
     return tr, te
-
-
-# 【不採用】カテゴリ列を One-Hot Encoding する
-def as_onehot(tr: pd.DataFrame, te: pd.DataFrame, cols):
-    """One-hot encoding of the given columns (drop original)."""
-    n_tr = len(tr)
-    both = pd.concat([tr, te], axis=0, ignore_index=True)
-    for c in cols:
-        both[c] = both[c].astype(str)
-    both = pd.get_dummies(both, columns=list(cols), dtype="int8")
-    return both.iloc[:n_tr].reset_index(drop=True), both.iloc[n_tr:].reset_index(drop=True)
-
-
-# ---------------------------------------------------------------------------
-# 1. arithmetic features
-# ---------------------------------------------------------------------------
-
-# Semantically meaningful pairs (first pass).
-MEANINGFUL_PAIRS = [
-    ("Charging_Stations_Near_Home", "Charging_Stations_Near_Work"),
-    ("Annual_Income_USD", "Daily_Commute_km"),
-    ("Age", "Annual_Income_USD"),
-    ("Annual_Income_USD", "Number_of_Cars_Owned"),
-    ("Daily_Commute_km", "Charging_Stations_Near_Work"),
-    ("Environmental_Concern_Level", "Annual_Income_USD"),
-    ("Age", "Number_of_Cars_Owned"),
-]
-
-_EPS = 1e-6
-
-
-# 2 列の和・差・比・平均の列をまとめて作る
-def _arith_block(df: pd.DataFrame, pairs, ops=("diff", "ratio", "sum", "avg")):
-    out = {}
-    for a, b in pairs:
-        va = df[a].astype("float32")
-        vb = df[b].astype("float32")
-        if "diff" in ops:
-            out[f"{a}_minus_{b}"] = va - vb
-        if "sum" in ops:
-            out[f"{a}_plus_{b}"] = va + vb
-        if "avg" in ops:
-            out[f"{a}_avg_{b}"] = (va + vb) / 2.0
-        if "ratio" in ops:
-            out[f"{a}_div_{b}"] = va / (vb + _EPS)
-    return pd.DataFrame(out, index=df.index)
-
-
-# 【不採用】数値列の四則演算の列を追加する
-def add_arithmetic(tr, te, src_tr, src_te, pairs=None, ops=("diff", "ratio", "sum", "avg")):
-    """Append arithmetic combinations of numeric columns.
-
-    `src_*` are the raw frames holding the numeric columns.
-    """
-    pairs = MEANINGFUL_PAIRS if pairs is None else pairs
-    return (
-        pd.concat([tr, _arith_block(src_tr, pairs, ops)], axis=1),
-        pd.concat([te, _arith_block(src_te, pairs, ops)], axis=1),
-    )
-
-
-# 【不採用】数値列の 2 列の組をすべて列挙する
-def all_numeric_pairs():
-    """【打ち止め】数値列の全2列ペアを列挙する (四則演算用)."""
-    pairs = []
-    for i, a in enumerate(NUMERIC_COLS):
-        for b in NUMERIC_COLS[i + 1 :]:
-            pairs.append((a, b))
-    return pairs
 
 
 # ---------------------------------------------------------------------------
@@ -258,136 +166,6 @@ def make_smooth_keys(src_tr, src_te, specs=SMOOTH_KEY_SPECS):
 
 
 # ---------------------------------------------------------------------------
-# 3. categorical / value interaction keys
-# ---------------------------------------------------------------------------
-
-
-# 【不採用】2 列を連結した交互作用のキーを作る
-def make_interaction_keys(src_tr, src_te, pairs):
-    """Build string keys for column pairs -> returned as extra raw frames."""
-    ktr = pd.DataFrame(index=src_tr.index)
-    kte = pd.DataFrame(index=src_te.index)
-    for a, b in pairs:
-        name = f"{a}__x__{b}"
-        ktr[name] = src_tr[a].astype(str) + "|" + src_tr[b].astype(str)
-        kte[name] = src_te[a].astype(str) + "|" + src_te[b].astype(str)
-    return ktr, kte
-
-
-# 【不採用】カテゴリ列の 2 列の組をすべて列挙する
-def cat_pairs(cols=None):
-    """【打ち止め】カテゴリ列の2列ペアを列挙する (交互作用TE用)."""
-    cols = CATEGORICAL_COLS if cols is None else cols
-    out = []
-    for i, a in enumerate(cols):
-        for b in cols[i + 1 :]:
-            out.append((a, b))
-    return out
-
-
-# ---------------------------------------------------------------------------
-# 4. Target Encoding (fold-safe)
-# ---------------------------------------------------------------------------
-
-
-# 【不採用】学習行だけで Target Encoding の対応表を作る(Out-of-Fold なし)
-def fit_target_encoding(src_fit: pd.DataFrame, y_fit, cols, smoothing=20.0, min_samples=1):
-    """Fit smoothed target encoding maps on the *training fold only*.
-
-    Returns a dict {col: (mapping Series, prior)}.
-    """
-    y_fit = pd.Series(np.asarray(y_fit), index=src_fit.index)
-    prior = float(y_fit.mean())
-    maps = {}
-    for c in cols:
-        key = src_fit[c]
-        grp = y_fit.groupby(key, observed=True)
-        agg = grp.agg(["sum", "count"])
-        smooth = (agg["sum"] + prior * smoothing) / (agg["count"] + smoothing)
-        if min_samples > 1:
-            smooth = smooth.where(agg["count"] >= min_samples, prior)
-        maps[c] = (smooth.astype("float32"), prior)
-    return maps
-
-
-# 【不採用】Target Encoding の対応表を当てる
-def apply_target_encoding(src: pd.DataFrame, maps, suffix="_te"):
-    """Apply fitted TE maps. Unseen values fall back to the fold prior."""
-    out = {}
-    for c, (mapping, prior) in maps.items():
-        out[f"{c}{suffix}"] = src[c].map(mapping).astype("float32").fillna(np.float32(prior))
-    return pd.DataFrame(out, index=src.index)
-
-
-# 【不採用】学習行で作った Target Encoding を学習・検証・test に当てる
-def fit_apply_te_cv(src_tr, src_te, y, cols, train_idx, valid_idx, smoothing=20.0, min_samples=1):
-    """Convenience: fit on train_idx rows, return (te_train, te_valid, te_test).
-
-    Simple variant: the training rows receive the statistic computed from the
-    whole training fold (including themselves). Safe w.r.t. the validation fold,
-    but the training rows see a slightly optimistic encoding.
-    """
-    maps = fit_target_encoding(
-        src_tr.iloc[train_idx], np.asarray(y)[train_idx], cols, smoothing, min_samples
-    )
-    return (
-        apply_target_encoding(src_tr.iloc[train_idx], maps),
-        apply_target_encoding(src_tr.iloc[valid_idx], maps),
-        apply_target_encoding(src_te, maps),
-    )
-
-
-# 【不採用】Out-of-Fold の Target Encoding(平滑化 1 種類)を作る
-def fit_apply_te_cv_nested(
-    src_tr,
-    src_te,
-    y,
-    cols,
-    train_idx,
-    valid_idx,
-    smoothing=20.0,
-    min_samples=1,
-    n_inner=5,
-    seed=42,
-):
-    """Double-protected target encoding.
-
-    - Everything is fitted strictly inside the OUTER training fold.
-    - TRAINING rows get inner out-of-fold values (inner StratifiedKFold), so a
-      row never sees its own label through the encoding.
-    - VALIDATION and TEST rows get the statistic of the whole outer training fold.
-
-    This removes the optimistic bias on the training rows and is what makes the
-    exact-value TE actually pay off.
-    """
-    from sklearn.model_selection import StratifiedKFold
-
-    y_arr = np.asarray(y)
-    fit_src = src_tr.iloc[train_idx].reset_index(drop=True)
-    fit_y = y_arr[train_idx]
-
-    # training rows: inner OOF encoding
-    te_train = pd.DataFrame(
-        np.zeros((len(fit_src), len(cols)), dtype="float32"),
-        columns=[f"{c}_te" for c in cols],
-    )
-    inner = StratifiedKFold(n_splits=n_inner, shuffle=True, random_state=seed)
-    for in_tr, in_va in inner.split(fit_src, fit_y):
-        maps = fit_target_encoding(
-            fit_src.iloc[in_tr], fit_y[in_tr], cols, smoothing, min_samples
-        )
-        te_train.iloc[in_va] = apply_target_encoding(fit_src.iloc[in_va], maps).values
-
-    # validation / test: statistic of the full outer training fold
-    full_maps = fit_target_encoding(fit_src, fit_y, cols, smoothing, min_samples)
-    return (
-        te_train,
-        apply_target_encoding(src_tr.iloc[valid_idx], full_maps),
-        apply_target_encoding(src_te, full_maps),
-    )
-
-
-# ---------------------------------------------------------------------------
 # 4b. Triple Target Encoding: several smoothing strengths as separate columns
 # ---------------------------------------------------------------------------
 
@@ -398,54 +176,6 @@ def _smooth_tag(sm):
         return "a"
     f = float(sm)
     return str(int(f)) if f == int(f) else str(f).replace(".", "p")
-
-
-# 【不採用】平滑化を複数並べた Target Encoding の対応表を作る
-def fit_target_encoding_multi(src_fit, y_fit, cols, smoothings=(20.0,), min_samples=1):
-    """Fit TE maps for *several* smoothing strengths at once.
-
-    The per-column groupby is done once and reused for every smoothing value,
-    so k smoothings cost far less than k separate passes.
-
-    ``smoothings`` accepts floats (m-estimate: ``(sum + prior*m)/(count + m)``)
-    and the string ``"auto"``, which reproduces sklearn's empirical-Bayes
-    shrinkage ``lambda = var(y)*n / (var(y)*n + var_within)``. For a binary
-    target ``var_within = p_i*(1-p_i)``, so no extra aggregation is needed.
-
-    Returns {out_col_name: (src_col, mapping Series, prior)}.
-    """
-    y_ser = pd.Series(np.asarray(y_fit, dtype="float64"), index=src_fit.index)
-    prior = float(y_ser.mean())
-    y_var = float(y_ser.var(ddof=0))
-    maps = {}
-    for c in cols:
-        agg = y_ser.groupby(src_fit[c], observed=True).agg(["sum", "count"])
-        s = agg["sum"].to_numpy()
-        n = agg["count"].to_numpy()
-        mean_cat = s / n
-        for sm in smoothings:
-            if sm == "auto":
-                var_cat = mean_cat * (1.0 - mean_cat)
-                denom = y_var * n + var_cat
-                lam = np.where(denom > 0, (y_var * n) / np.where(denom > 0, denom, 1.0), 1.0)
-                enc = lam * mean_cat + (1.0 - lam) * prior
-            else:
-                m = float(sm)
-                enc = (s + prior * m) / (n + m)
-            if min_samples > 1:
-                enc = np.where(n >= min_samples, enc, prior)
-            name = f"{c}_te{_smooth_tag(sm)}"
-            maps[name] = (c, pd.Series(enc.astype("float32"), index=agg.index), prior)
-    return maps
-
-
-# 【不採用】平滑化を複数並べた対応表をまとめて当てる
-def apply_target_encoding_multi(src: pd.DataFrame, maps):
-    """複数 smooth の TE マップをまとめて適用する."""
-    out = {}
-    for name, (col, mapping, prior) in maps.items():
-        out[name] = src[col].map(mapping).astype("float32").fillna(np.float32(prior))
-    return pd.DataFrame(out, index=src.index)
 
 
 # Target Encoding のキー列を train・test 共通の整数コードにする
@@ -562,35 +292,31 @@ def fit_apply_te_cv_nested_multi(
 
 
 # ---------------------------------------------------------------------------
-# 5. misc
+# 本番の構成(作る列の設計)
 # ---------------------------------------------------------------------------
+ALL_COLS = NUMERIC_COLS + CATEGORICAL_COLS
+# 値の種類（ユニーク値）が多い数値列。平滑化3種の Target Encoding はこの2列と Smooth Keys だけに作る
+HIGH_CARD_NUMERIC = ["Annual_Income_USD", "Daily_Commute_km"]
+TRIPLE_SMOOTHS = ("auto", 10.0, 100.0)
+# digit を作る列。保有台数・環境意識は値が 0〜9 なので 1 の位が値そのものになり、作らない
+DIGIT_COLS = [c for c in NUMERIC_COLS if c not in ("Number_of_Cars_Owned", "Environmental_Concern_Level")]
 
 
-# 【不採用】スタンド数などの行ごとの最小・最大・合計を作る
-def add_row_aggregates(tr, te, src_tr, src_te):
-    """Simple row-wise aggregates over the charging-station / concern block."""
-    tr = tr.copy()
-    te = te.copy()
-    for frame, src in ((tr, src_tr), (te, src_te)):
-        home = src["Charging_Stations_Near_Home"].astype("float32")
-        work = src["Charging_Stations_Near_Work"].astype("float32")
-        frame["charge_total"] = home + work
-        frame["charge_min"] = np.minimum(home, work)
-        frame["charge_max"] = np.maximum(home, work)
-    return tr, te
+# 本番で作る Target Encoding の (キー, 平滑化) の一覧を返す。この順番がそのまま列の並び順になる
+def te_plan(smooth_key_names):
+    """Smooth Keys 4本(3種)→ 生の 13 列(値の種類が多い2列は3種、少ない11列は auto だけ)。
 
-
-# ---------------------------------------------------------------------------
-# 重複している列(同じ情報を形だけ変えて持っている列)の一覧
-# ---------------------------------------------------------------------------
-# 他の列と同じ情報しか持たない列の名前を返す(--dedup)
-def dedup_columns():
-    """他の列と同じ情報しか持たない列の名前を返す(--dedup で学習から外す)。
-
-    LightGBM 版と同じ考え方。ただし XGBoost はカテゴリ列を整数コード(ordinal)で渡すため、
-    Count はカテゴリの並び順を変える役に立つ。Count は残し、TE の平滑化の重複と digit の重複だけを外す。
+    カテゴリ列にも作る(XGBoost はカテゴリを整数コードで渡すので、購入率の列が役に立つ)。
+    列の並び順は学習結果に影響するので変えないこと。
     """
-    lowcard = CATEGORICAL_COLS + LOW_CARD_NUMERIC
-    te_dups = [f"{c}_te{s}" for c in lowcard for s in ("10", "100")]
-    digit_dups = ["Number_of_Cars_Owned_d0", "Environmental_Concern_Level_d0"]
-    return te_dups + digit_dups
+    plan = [(k, TRIPLE_SMOOTHS) for k in smooth_key_names]
+    plan += [(c, TRIPLE_SMOOTHS if c in HIGH_CARD_NUMERIC else ("auto",)) for c in ALL_COLS]
+    return plan
+
+
+# キーごとに平滑化を変えて、fold 内で Out-of-Fold の Target Encoding を作る(plan の順に列を並べる)
+def fit_apply_te_cv_nested_plan(codes_tr, codes_te, ncats, y, plan, train_idx, valid_idx, n_inner=5, seed=42):
+    """te_plan() のとおりに Target Encoding を作る。値は fit_apply_te_cv_nested_multi と同じ(キーごとに独立に計算するため)。"""
+    parts = [fit_apply_te_cv_nested_multi(codes_tr, codes_te, ncats, y, [c], train_idx, valid_idx, tuple(sm),
+                                          n_inner=n_inner, seed=seed) for c, sm in plan]
+    return tuple(pd.concat([p[i] for p in parts], axis=1) for i in range(3))

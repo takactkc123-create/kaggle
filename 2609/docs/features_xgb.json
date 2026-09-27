@@ -1,7 +1,7 @@
 {
  "tag": "xgb",
  "model": "XGBoost",
- "note": "pattern=tte_sk_dig dedup=True",
+ "note": "本番の構成(fe.te_plan())",
  "n_features": 69,
  "cat_features": [],
  "columns": [

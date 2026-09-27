@@ -1,7 +1,7 @@
 {
  "tag": "catboost",
  "model": "CatBoost",
- "note": "fe=te_all,catify,digits,skeys,te3 dedup=True lean=True",
+ "note": "本番の構成(fe.te_plan())",
  "n_features": 43,
  "cat_features": [
   "Age",

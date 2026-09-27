@@ -39,13 +39,10 @@ from sklearn.preprocessing import TargetEncoder
 
 import importlib
 _fe_realmlp = importlib.import_module("03_feature_engineering_realmlp")
-EXACT_TE_SMOOTHS = _fe_realmlp.EXACT_TE_SMOOTHS
 ID = _fe_realmlp.ID
 TARGET = _fe_realmlp.TARGET
 build_features = _fe_realmlp.build_features
-build_te_key_frame = _fe_realmlp.build_te_key_frame
 load_orig = _fe_realmlp.load_orig
-target_encode_highcard = _fe_realmlp.target_encode_highcard
 
 warnings.filterwarnings("ignore")
 
@@ -578,24 +575,12 @@ def main():
     ap.add_argument("--tag", type=str, default="realmlp", help="出力ファイル名の接尾辞")
     ap.add_argument("--no-save", action="store_true")
     ap.add_argument(
-        "--nbr", choices=["none", "rate", "slope"], default="none",
-        help="年収の近傍統計を足す。rate=近くの値の購入率のみ / slope=+傾き・曲率",
-    )
-    ap.add_argument(
         "--dump-features", action="store_true",
         help="学習せず、fold1 の特徴量の列名を docs/features_<tag>.json に書いて終了する",
     )
     ap.add_argument(
-        "--exact-te", action="store_true",
-        help="厳密値TE(値の種類（ユニーク値）が多い2列+Smooth Keys3本, Triple smooth=auto/10/100 の15列)を追加",
-    )
-    ap.add_argument(
         "--no-orig", action="store_true",
         help="元データ(EV_Adoption...csv)由来の org_mean 特徴量を使わない。外部データの寄与の切り分け用",
-    )
-    ap.add_argument(
-        "--digits", action="store_true",
-        help="値の種類（ユニーク値）が多い2列(年収・通勤距離)の各桁をカテゴリ特徴として追加",
     )
     ap.add_argument(
         "--combo-home", action="store_true",
@@ -608,14 +593,6 @@ def main():
     ap.add_argument(
         "--te-income", action="store_true",
         help="年収の値ごとの購入率を train だけで fold 内に作る(元データの購入率の代わり。2026-09-28 の検証用)",
-    )
-    ap.add_argument(
-        "--km5", action="store_true",
-        help="通勤距離 /5 のキー(Daily_km_/_5_floor_)を足す。2026-09-27 に不採用。旧構成の再現用",
-    )
-    ap.add_argument(
-        "--ratio", action="store_true",
-        help="通勤距離 ÷ 年齢 の比(_Daily_Commute_km_/_Age)を足す。2026-09-27 に不採用。旧構成の再現用",
     )
     args = ap.parse_args()
 
@@ -652,10 +629,10 @@ def main():
     extra_combos = extra_combos or None
     t0 = time.time()
     X, new_cat_cols, new_num_cols, combo_names = build_features(
-        X, cat_cols, num_cols, category_map, fit=True, orig=orig, digits=args.digits, ratio=args.ratio, km5=args.km5, extra_combos=extra_combos
+        X, cat_cols, num_cols, category_map, fit=True, orig=orig, extra_combos=extra_combos
     )
     X_test, _, _, _ = build_features(
-        X_test, cat_cols, num_cols, category_map, fit=False, orig=orig, digits=args.digits, ratio=args.ratio, km5=args.km5, extra_combos=extra_combos
+        X_test, cat_cols, num_cols, category_map, fit=False, orig=orig, extra_combos=extra_combos
     )
     cat_cols = cat_cols + new_cat_cols
     num_cols = num_cols + new_num_cols
@@ -666,12 +643,6 @@ def main():
           f"| X={X.shape} X_test={X_test.shape}", flush=True)
 
     # ── 厳密値TE用キーフレーム(値の種類（ユニーク値）が多い2列+Smooth Keys, 教師なしなので全体で作ってよい)──
-    te_keys_all = te_keys_test = None
-    if args.exact_te:
-        te_keys_all = build_te_key_frame(X)
-        te_keys_test = build_te_key_frame(X_test)
-        print(f"exact-te keys: {list(te_keys_all.columns)} -> "
-              f"{len(te_keys_all.columns) * len(EXACT_TE_SMOOTHS)} 列追加予定", flush=True)
 
     # ── CV (全モデル共通・変更禁止) ────────────────────────────────────────
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
@@ -701,33 +672,6 @@ def main():
         X_val[te_names] = te.transform(X_val[combo_names])
         X_tst[te_names] = te.transform(X_tst[combo_names])
 
-        # ── 厳密値TE(値の種類（ユニーク値）が多い2列+Smooth Keys, Out-of-Foldでリーク防止) ──────
-        if args.exact_te:
-            key_cols = list(te_keys_all.columns)
-            ht_tr, (ht_val, ht_tst) = target_encode_highcard(
-                te_keys_all.iloc[tr_idx],
-                y_tr.to_numpy(),
-                [te_keys_all.iloc[val_idx], te_keys_test],
-                key_cols,
-                smooths=EXACT_TE_SMOOTHS,
-                n_inner=5,
-                seed=42,
-            )
-            X_tr[list(ht_tr.columns)] = ht_tr
-            X_val[list(ht_val.columns)] = ht_val
-            X_tst[list(ht_tst.columns)] = ht_tst
-
-        if args.nbr != "none":
-            # 年収の近傍統計(近くの値の購入率・傾き・曲率)。fold 内で作りリークを防ぐ
-            nbr_fe = importlib.import_module("03_feature_engineering_all")
-            nb_tr, (nb_val, nb_tst) = nbr_fe.add_income_neighborhood(
-                X_tr["Annual_Income_USD"].to_numpy(), y_tr.to_numpy(),
-                [X_val["Annual_Income_USD"].to_numpy(), X_tst["Annual_Income_USD"].to_numpy()],
-                with_slope=(args.nbr == "slope"), seed=42,
-            )
-            for frame, block in ((X_tr, nb_tr), (X_val, nb_val), (X_tst, nb_tst)):
-                frame[list(block.columns)] = block.to_numpy()
-
         if fold == 1:
             print(f"len(FEATURES): {X_tr.shape[1]}", flush=True)
 
@@ -736,7 +680,7 @@ def main():
             import feature_catalog
             feature_catalog.dump(
                 args.tag, "RealMLP", X_tr.columns, cat_features=cat_cols,
-                note=f"exact_te={args.exact_te} digits={args.digits} no_orig={args.no_orig} ratio={args.ratio} km5={args.km5}",
+                note=f"no_orig={args.no_orig} combo_home={args.combo_home}",
             )
             return
         print(f"{'#' * 16}\n### Fold {fold}/5  (train={len(y_tr)}, val={len(y_val)})\n{'#' * 16}", flush=True)

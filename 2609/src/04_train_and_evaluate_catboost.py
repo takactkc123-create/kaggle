@@ -1,18 +1,21 @@
-"""CatBoost training / evaluation script for S6E9.
+"""CatBoost の学習・評価(S6E9)。
 
-Imports the FE functions from `03_feature_engineering_catboost.py`, builds a feature set from the
-components given with `--fe`, runs StratifiedKFold CV and (optionally) writes
-the ensemble artifacts.
+`03_feature_engineering_catboost.py` の関数で**本番で使う列だけ**を作り、
+StratifiedKFold(n_splits=5, shuffle=True, random_state=42) で学習する。--save で提出ファイル・OOF・重要度を保存する。
 
-Examples
---------
-  uv run 04_train_and_evaluate_catboost.py --fe base --folds 3 --iters 400 --lr 0.15
-  uv run 04_train_and_evaluate_catboost.py --fe te_all,catify --save
+作る列(43 列)
+    生の 13 列(値の種類（ユニーク値）が少ない数値列も文字列にして cat_features に渡す = catify)
+    + digit(fe.DIGIT_COLS。catify の前に作る)
+    + Target Encoding(fe.te_plan(): 数値7列・Smooth Keys 3本。fold 内で Out-of-Fold)
+
+例
+    uv run src/04_train_and_evaluate_catboost.py --iters 1000 --lr 0.06 --fast --border 64 --hc-border 1024 --threads 7 --save
 """
 
 from __future__ import annotations
 
 import argparse
+import importlib
 import os
 import time
 
@@ -22,205 +25,75 @@ from catboost import CatBoostClassifier
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 
-import importlib
 fe = importlib.import_module("03_feature_engineering_catboost")
-
-ALL_COMPONENTS = {
-    "base",      # nothing extra
-    "arith",     # arithmetic features
-    "inter",     # interaction string keys used as cat_features
-    "cnt",       # count encoding of the 13 base columns
-    "cnt_ix",    # count encoding of the interaction keys
-    "te_cat",    # target encoding of the 6 categorical columns
-    "te_low",    # target encoding of low-cardinality numeric columns
-    "te_all",    # exact-value target encoding of all 13 columns
-    "te_ix",     # target encoding of interaction keys
-    "catify",    # low-card numeric columns passed as cat_features (string)
-    "drop_num",  # drop the raw low-card numerics when they are target encoded
-    "digits",    # per-digit decomposition of every numeric column (10^-4..10^3)
-    "skeys",     # multi-scale "smooth keys" added as TE keys
-    "te3",       # triple target encoding (3 smoothing levels per key)
-}
-
-TRIPLE_SMOOTHS = [10.0, 20.0, 100.0]
 
 
 # コマンドライン引数を読む
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
-    p.add_argument("--fe", default="base", help="comma separated FE components")
     p.add_argument("--folds", type=int, default=5)
-    p.add_argument("--iters", type=int, default=0, help="0 = CatBoost default (1000)")
-    p.add_argument("--lr", type=float, default=0.0, help="0 = CatBoost default")
-    p.add_argument("--rows", type=int, default=0, help="subsample train rows (0 = all)")
-    p.add_argument("--smooth", type=float, default=20.0, help="TE smoothing")
-    p.add_argument("--one-hot", type=int, default=0, help="one_hot_max_size (0 = default)")
+    p.add_argument("--iters", type=int, default=0, help="0 = CatBoost の既定(1000)")
+    p.add_argument("--lr", type=float, default=0.0, help="0 = CatBoost の既定")
+    p.add_argument("--rows", type=int, default=0, help="スクリーニング用に train を行数で間引く(0 = すべて)")
+    p.add_argument("--one-hot", type=int, default=0, help="one_hot_max_size (0 = 既定)")
     p.add_argument("--depth", type=int, default=0)
-    p.add_argument(
-        "--fast",
-        action="store_true",
-        help="speed-oriented params (Plain boosting, max_ctr_complexity=1, border_count=64)",
-    )
+    p.add_argument("--fast", action="store_true",
+                   help="速度優先の設定(Plain boosting・max_ctr_complexity=1・border_count=64)")
     p.add_argument("--threads", type=int, default=0)
-    p.add_argument("--border", type=int, default=0, help="override border_count")
-    p.add_argument(
-        "--hc-border",
-        type=int,
-        default=0,
-        help="per-feature border_count for the high-cardinality numerics "
-        "(Annual_Income_USD / Daily_Commute_km and their TE columns). "
-        "Much cheaper than raising --border globally.",
-    )
-    p.add_argument("--rsm", type=float, default=0.0, help="colsample per split (0=off)")
-    p.add_argument(
-        "--subsample",
-        type=float,
-        default=0.0,
-        help="Bernoulli row subsample per tree (0 = CatBoost default bootstrap)",
-    )
-    p.add_argument("--save", action="store_true", help="write submission/oof/importance")
-    p.add_argument(
-        "--dump-features", action="store_true",
-        help="学習せず、fold1 の特徴量の列名を docs/features_<tag>.json に書いて終了する",
-    )
-    p.add_argument("--tag", default="", help="label printed with the result")
-    p.add_argument(
-        "--combo-home", action="store_true",
-        help="自宅充電の可否 × 自宅スタンド数を 1 本のカテゴリ列として足す(EDA の交互作用の検証用)",
-    )
-    p.add_argument(
-        "--lean", action="store_true",
-        help="値の種類（ユニーク値）が少ない数値列の digit とカテゴリ列の TE を外す(fe.lean_columns()。--dedup と併用)",
-    )
-    p.add_argument("--drop-feats", default="", help="カンマ区切りで指定した列を学習から外す(エンコーディングの切り分け用)。存在しない列名なら止まる")
-    p.add_argument(
-        "--dedup", action="store_true",
-        help="他の列と同じ情報しか持たない列(fe.dedup_columns())を学習から外す",
-    )
-    p.add_argument(
-        "--out-suffix", default="",
-        help="成果物のファイル名の接尾辞。例 '_dedup' -> oof/oof_catboost_dedup.npy(既定は本番の名前)",
-    )
+    p.add_argument("--border", type=int, default=0, help="border_count を上書きする")
+    p.add_argument("--hc-border", type=int, default=0,
+                   help="年収・通勤距離とその Target Encoding の列だけ border_count をこの値にする")
+    p.add_argument("--rsm", type=float, default=0.0, help="分割ごとに使う列の割合(0 = 使わない)")
+    p.add_argument("--subsample", type=float, default=0.0, help="木ごとの行の間引き(0 = CatBoost の既定)")
+    p.add_argument("--save", action="store_true", help="提出ファイル・OOF・重要度を保存する")
+    p.add_argument("--dump-features", action="store_true",
+                   help="学習せず、fold 1 の列名を docs/features_<tag>.json に書いて終了する")
+    p.add_argument("--tag", default="", help="結果の表示に付けるラベル")
+    p.add_argument("--out-suffix", default="",
+                   help="成果物のファイル名の接尾辞。例 '_d5' -> oof/oof_catboost_d5.npy(既定は本番の名前)")
     return p.parse_args()
 
 
-# --fe の指定に従って特徴量を組み上げる(fold によらない部分)
-def build_features(components: set[str], rows: int, seed: int = 42):
-    train = pd.read_csv("data/train.csv")
-    test = pd.read_csv("data/test.csv")
-
-    if rows and rows < len(train):
-        train = train.sample(n=rows, random_state=seed).reset_index(drop=True)
-
-    y = (train[fe.TARGET] == "Yes").astype(int)
-
+# fold によらない部分(生の列・digit・Smooth Keys・catify)を作る
+def prepare(train: pd.DataFrame, test: pd.DataFrame):
     base_cols = fe.NUMERIC_COLS + fe.CATEGORICAL_COLS
-    X = train[base_cols].copy()
-    X_test = test[base_cols].copy()
+    X, X_test = train[base_cols].copy(), test[base_cols].copy()
 
-    cat_features: list[str] = list(fe.CATEGORICAL_COLS)
-    feature_cols: list[str] = list(base_cols)
-    helper_cols: list[str] = []  # created but not fed to the model
+    digit_cols = fe.add_digits(X, cols=fe.DIGIT_COLS)          # catify より前に作る
+    fe.add_digits(X_test, cols=fe.DIGIT_COLS)
+    digit_cols = fe.drop_constant([X, X_test], digit_cols)
 
-    # --- digit features (must run before catify casts columns to str) -----
-    if "digits" in components:
-        digit_cols = fe.add_digits(X)
-        fe.add_digits(X_test)
-        digit_cols = fe.drop_constant([X, X_test], digit_cols)
-        feature_cols += digit_cols
+    sk_cols = fe.add_smooth_keys(X, fe.PROD_SMOOTH_KEY_SPECS)   # Target Encoding のキー専用(モデルには渡さない)
+    fe.add_smooth_keys(X_test, fe.PROD_SMOOTH_KEY_SPECS)
 
-    # --- multi-scale smooth keys (TE keys only, not model features) -------
-    sk_cols: list[str] = []
-    if "skeys" in components:
-        sk_cols = fe.add_smooth_keys(X)
-        fe.add_smooth_keys(X_test)
-        helper_cols += sk_cols
+    fe.cast_to_str([X, X_test], fe.LOWCARD_NUM_COLS)            # catify
+    feature_cols = base_cols + digit_cols
+    cat_features = fe.CATEGORICAL_COLS + fe.LOWCARD_NUM_COLS
+    return X, X_test, feature_cols, cat_features, fe.te_plan(sk_cols)
 
-    # --- arithmetic -------------------------------------------------------
-    if "arith" in components:
-        new_tr = fe.add_arithmetic(X)
-        fe.add_arithmetic(X_test)
-        feature_cols += new_tr
 
-    # --- interaction keys -------------------------------------------------
-    need_ix = {"inter", "cnt_ix", "te_ix"} & components
-    ix_cols: list[str] = []
-    if need_ix:
-        ix_cols = fe.add_interactions(X)
-        fe.add_interactions(X_test)
-        if "inter" in components:
-            feature_cols += ix_cols
-            cat_features += ix_cols
-        else:
-            helper_cols += ix_cols
-
-    # --- count encoding ---------------------------------------------------
-    if "cnt" in components:
-        feature_cols += fe.add_count_encoding(X, X_test, base_cols)
-    if "cnt_ix" in components:
-        feature_cols += fe.add_count_encoding(X, X_test, ix_cols)
-
-    # --- catify (low-card numerics as categorical) ------------------------
-    if "catify" in components:
-        fe.cast_to_str([X, X_test], fe.LOWCARD_NUM_COLS)
-        cat_features += fe.LOWCARD_NUM_COLS
-
-    # --- target encoding source columns (applied inside each fold) --------
-    te_cols: list[str] = []
-    if "te_all" in components:
-        te_cols += base_cols
-    else:
-        if "te_cat" in components:
-            te_cols += fe.CATEGORICAL_COLS
-        if "te_low" in components:
-            te_cols += fe.LOWCARD_NUM_COLS
-    if "te_ix" in components:
-        te_cols += ix_cols
-    if te_cols and sk_cols:
-        te_cols += sk_cols
-    te_cols = list(dict.fromkeys(te_cols))
-
-    drop_after_te: list[str] = []
-    if "drop_num" in components:
-        drop_after_te = [c for c in fe.LOWCARD_NUM_COLS if c in te_cols]
-
-    keep_cols = list(dict.fromkeys(feature_cols + helper_cols + te_cols))
-    X = X[keep_cols]
-    X_test = X_test[keep_cols]
-
-    return train, test, X, y, X_test, feature_cols, cat_features, te_cols, drop_after_te
+# 1 つの fold の学習行・検証行・test の行列と、使う列・カテゴリ列を作る(Target Encoding は学習行だけで作る)
+def fold_matrices(prep, y: np.ndarray, tr_idx, va_idx):
+    X, X_test, feature_cols, cat_features, plan = prep
+    X_tr, X_va, X_te = X.iloc[tr_idx].copy(), X.iloc[va_idx].copy(), X_test.copy()
+    new_te = fe.target_encode_plan(X_tr, X_va, X_te, y[tr_idx], plan)
+    feats = feature_cols + new_te
+    cats = [c for c in cat_features if c in feats]
+    return X_tr[feats], X_va[feats], X_te[feats], feats, cats
 
 
 # CatBoost を 5-fold で学習・評価し、成果物を保存する
 def main() -> None:
     args = parse_args()
-    components = {c.strip() for c in args.fe.split(",") if c.strip()}
-    unknown = components - ALL_COMPONENTS
-    if unknown:
-        raise SystemExit(f"unknown FE components: {sorted(unknown)}")
-
     t0 = time.time()
-    (
-        train,
-        test,
-        X,
-        y,
-        X_test,
-        feature_cols,
-        cat_features,
-        te_cols,
-        drop_after_te,
-    ) = build_features(components, args.rows)
+    train = pd.read_csv("data/train.csv")
+    test = pd.read_csv("data/test.csv")
+    if args.rows and args.rows < len(train):
+        train = train.sample(n=args.rows, random_state=42).reset_index(drop=True)
+    y = (train[fe.TARGET] == "Yes").astype(int).to_numpy()
 
-    if args.combo_home:
-        # 自宅充電の可否 × 自宅スタンド数を 1 本のカテゴリ列にする(購入率は CatBoost が内部で計算する)
-        def combo(frame):
-            return frame["Home_Charging_Possible"].astype(str) + "_" + frame["Charging_Stations_Near_Home"].astype(str)
-        X, X_test = X.assign(ix_home=combo(X)), X_test.assign(ix_home=combo(X_test))
-        feature_cols = feature_cols + ["ix_home"]
-        cat_features = cat_features + ["ix_home"]
-
-    print(f"[{args.tag or args.fe}] rows={len(X)} te_cols={len(te_cols)}")
+    prep = prepare(train, test)
+    print(f"[{args.tag or 'catboost'}] rows={len(train)} te_keys={len(prep[4])}")
 
     params = dict(random_state=42, verbose=False, allow_writing_files=False)
     if args.iters:
@@ -246,110 +119,52 @@ def main() -> None:
         params["subsample"] = args.subsample
 
     skf = StratifiedKFold(n_splits=args.folds, shuffle=True, random_state=42)
-    oof_pred = np.zeros(len(X))
-    test_pred = np.zeros(len(X_test))
-    importances = None
-    used_features: list[str] = []
-    used_cats: list[str] = []
+    oof_pred = np.zeros(len(train))
+    test_pred = np.zeros(len(test))
+    importances, used_features = None, []
 
-    for fold, (tr_idx, va_idx) in enumerate(skf.split(X, y)):
-        X_tr = X.iloc[tr_idx].copy()
-        X_va = X.iloc[va_idx].copy()
-        X_te = X_test.copy()
-        y_tr = y.iloc[tr_idx].to_numpy()
-
-        fold_features = list(feature_cols)
-        fold_cats = list(cat_features)
-
-        if te_cols:
-            new_te = fe.target_encode(
-                X_tr,
-                X_va,
-                X_te,
-                y_tr,
-                te_cols,
-                smooth=args.smooth,
-                smooths=TRIPLE_SMOOTHS if "te3" in components else None,
-            )
-            fold_features += new_te
-            for col in drop_after_te:
-                if col in fold_features:
-                    fold_features.remove(col)
-                if col in fold_cats:
-                    fold_cats.remove(col)
-
-        if args.dedup:
-            # 重複している列を外す(平滑化の重複 TE・/1 の Smooth Key の TE)
-            dup = set(fe.dedup_columns())
-            fold_features = [c for c in fold_features if c not in dup]
-
-        if args.lean:
-            # エンコーディングを絞る(値の種類（ユニーク値）が少ない数値列の digit、カテゴリ列の TE)
-            lean = set(fe.lean_columns())
-            fold_features = [c for c in fold_features if c not in lean]
-
-        if args.drop_feats:
-            extra = [c.strip() for c in args.drop_feats.split(",") if c.strip()]
-            missing = [c for c in extra if c not in fold_features]
-            if missing:
-                raise SystemExit(f"--drop-feats に存在しない列: {missing}")
-            fold_features = [c for c in fold_features if c not in extra]
-
-        fold_cats = [c for c in fold_cats if c in fold_features]
-        used_features, used_cats = fold_features, fold_cats
+    for fold, (tr_idx, va_idx) in enumerate(skf.split(train, y)):
+        X_tr, X_va, X_te, feats, cats = fold_matrices(prep, y, tr_idx, va_idx)
+        used_features = feats
 
         fold_params = dict(params)
         if args.hc_border:
-            targets = set(fe.HIGHCARD_NUM_COLS) | {
-                f"te{tag}_{c}"
-                for c in fe.HIGHCARD_NUM_COLS
-                for tag in ("", "10", "20", "100")
-            }
+            # 年収・通勤距離とその Target Encoding の列だけ、ビン数を上げる(列の位置で指定する)
+            targets = set(fe.HIGHCARD_NUM_COLS) | {f"te{tag}_{c}" for c in fe.HIGHCARD_NUM_COLS
+                                                   for tag in ("", "10", "20", "100")}
             fold_params["per_float_feature_quantization"] = [
-                f"{i}:border_count={args.hc_border}"
-                for i, name in enumerate(fold_features)
-                if name in targets and name not in fold_cats
-            ]
+                f"{i}:border_count={args.hc_border}" for i, name in enumerate(feats)
+                if name in targets and name not in cats]
 
         if args.dump_features:
             import feature_catalog
-            feature_catalog.dump(
-                args.tag or "catboost", "CatBoost", fold_features,
-                cat_features=fold_cats, note=f"fe={args.fe} dedup={args.dedup} lean={args.lean}",
-            )
+            feature_catalog.dump(args.tag or "catboost", "CatBoost", feats, cat_features=cats,
+                                 note="本番の構成(fe.te_plan())")
             return
 
         model = CatBoostClassifier(**fold_params)
-        model.fit(X_tr[fold_features], y_tr, cat_features=fold_cats)
+        model.fit(X_tr, y[tr_idx], cat_features=cats)
 
-        oof_pred[va_idx] = model.predict_proba(X_va[fold_features])[:, 1]
+        oof_pred[va_idx] = model.predict_proba(X_va)[:, 1]
         if args.save:
-            test_pred += model.predict_proba(X_te[fold_features])[:, 1] / args.folds
-
+            test_pred += model.predict_proba(X_te)[:, 1] / args.folds
         imp = model.get_feature_importance()
         importances = imp if importances is None else importances + imp
-        print(
-            f"  fold {fold} AUC: {roc_auc_score(y.iloc[va_idx], oof_pred[va_idx]):.5f}"
-            f"  ({time.time() - t0:.0f}s)"
-        )
+        print(f"  fold {fold} AUC: {roc_auc_score(y[va_idx], oof_pred[va_idx]):.5f}  ({time.time() - t0:.0f}s)")
 
     oof_auc = roc_auc_score(y, oof_pred)
-    print(f"RESULT\t{args.tag or args.fe}\tOOF AUC: {oof_auc:.5f}\t"
-          f"n_features={len(used_features)}\t{time.time() - t0:.0f}s")
+    print(f"RESULT\t{args.tag or 'catboost'}\tOOF AUC: {oof_auc:.5f}\tn_features={len(used_features)}\t"
+          f"{time.time() - t0:.0f}s")
 
     if args.save:
-        os.makedirs("submit", exist_ok=True)
-        os.makedirs("oof", exist_ok=True)
-        os.makedirs("importance", exist_ok=True)
-
+        for d in ("submit", "oof", "importance"):
+            os.makedirs(d, exist_ok=True)
         pd.DataFrame({"id": test["id"], fe.TARGET: test_pred}).to_csv(
-            f"submit/submission_catboost{args.out_suffix}.csv", index=False
-        )
+            f"submit/submission_catboost{args.out_suffix}.csv", index=False)
         np.save(f"oof/oof_catboost{args.out_suffix}.npy", oof_pred)
         np.save(f"oof/pred_catboost{args.out_suffix}.npy", test_pred)
 
         import matplotlib
-
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 

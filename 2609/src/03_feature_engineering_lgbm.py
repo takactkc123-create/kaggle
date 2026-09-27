@@ -17,7 +17,6 @@ Design notes
 
 from __future__ import annotations
 
-import itertools
 
 import numpy as np
 import pandas as pd
@@ -98,87 +97,9 @@ def make_key_frame(train: pd.DataFrame, test: pd.DataFrame):
 
 
 # --------------------------------------------------------------------------
-# 1. arithmetic features
-# --------------------------------------------------------------------------
-# 【不採用】意味で選んだ比・差・和の列を作る
-def add_arithmetic_meaningful(df: pd.DataFrame) -> pd.DataFrame:
-    """Domain-meaningful ratio / diff / sum features."""
-    out = pd.DataFrame(index=df.index)
-    home = df["Charging_Stations_Near_Home"]
-    work = df["Charging_Stations_Near_Work"]
-    inc = df["Annual_Income_USD"]
-    km = df["Daily_Commute_km"]
-    age = df["Age"]
-    cars = df["Number_of_Cars_Owned"]
-    env = df["Environmental_Concern_Level"]
-
-    out["ar_charge_sum"] = home + work
-    out["ar_charge_diff"] = home - work
-    out["ar_charge_ratio"] = home / (work + 1.0)
-    out["ar_income_per_km"] = inc / (km + 1.0)
-    out["ar_income_per_age"] = inc / age
-    out["ar_income_per_car"] = inc / (cars + 1.0)
-    out["ar_km_per_charge"] = km / (home + work + 1.0)
-    out["ar_income_x_env"] = inc * env
-    out["ar_env_per_km"] = env / (km + 1.0)
-    out["ar_charge_per_car"] = (home + work) / (cars + 1.0)
-    out["ar_age_x_env"] = age * env
-    out["ar_km_per_car"] = km / (cars + 1.0)
-    return out
-
-
-# 【不採用】数値列の全ペアの差・比・和の列を作る
-def add_arithmetic_all_pairs(df: pd.DataFrame, cols=None) -> pd.DataFrame:
-    """diff / ratio / sum over every numeric pair.
-
-    `avg` for a pair is a strictly monotonic transform of `sum` (sum / 2), so
-    tree models cannot distinguish them -> only `sum` is materialised here and
-    `avg` is covered by the multi-column group means below.
-    """
-    cols = NUMERIC_COLS if cols is None else cols
-    out = pd.DataFrame(index=df.index)
-    for a, b in itertools.combinations(cols, 2):
-        va = df[a].astype("float32")
-        vb = df[b].astype("float32")
-        out[f"p_{a}_m_{b}"] = va - vb
-        out[f"p_{a}_p_{b}"] = va + vb
-        out[f"p_{a}_d_{b}"] = va / (vb + 1.0)
-    return out
-
-
-# 【不採用】標準化した数値列の行ごとの平均・標準偏差を作る
-def add_group_means(df: pd.DataFrame) -> pd.DataFrame:
-    """avg-style aggregates over standardised numeric columns."""
-    out = pd.DataFrame(index=df.index)
-    z = (df[NUMERIC_COLS] - df[NUMERIC_COLS].mean()) / df[NUMERIC_COLS].std()
-    out["g_avg_all"] = z.mean(axis=1).astype("float32")
-    out["g_std_all"] = z.std(axis=1).astype("float32")
-    out["g_avg_charge"] = df[
-        ["Charging_Stations_Near_Home", "Charging_Stations_Near_Work"]
-    ].mean(axis=1).astype("float32")
-    return out
-
-
-# --------------------------------------------------------------------------
 # 1b. digit features  (round 3 - from reference_URL.md S-1)
 # --------------------------------------------------------------------------
 DIGIT_K = list(range(-4, 4))  # 10^-4 .. 10^3
-
-
-# 【不採用】補助金(0/1)と 3 列との積を作る
-def add_subsidy_products(df: pd.DataFrame) -> pd.DataFrame:
-    """補助金(0/1)と、補助金がないと効きが横ばいになる3列との積。
-
-    EDA で、補助金なしの群では環境意識・収入・航続距離への不安のどれを動かしても
-    購入率がほぼ床に張り付いていた。補助金ありのときだけ値が残る形で渡す。
-    """
-    subsidy = (df["Subsidy_Available"] == "Yes").astype("float32")
-    anxiety = df["Range_Anxiety_Level"].map({"Low": 0, "Medium": 1, "High": 2}).astype("float32")
-    return pd.DataFrame({
-        "subsidy_x_env": subsidy * df["Environmental_Concern_Level"].astype("float32"),
-        "subsidy_x_income": subsidy * df["Annual_Income_USD"].astype("float32"),
-        "subsidy_x_anxiety": subsidy * anxiety,
-    }, index=df.index)
 
 
 # 数値列を桁ごとの列(digit features)にばらす
@@ -336,6 +257,7 @@ def target_encode_fold(
     smooth=20.0,
     n_inner: int = 5,
     seed: int = 42,
+    suffix: bool | None = None,
 ):
     """Leak-free target encoding.
 
@@ -352,7 +274,8 @@ def target_encode_fold(
     (te_train, [te_other, ...]) as DataFrames aligned to the inputs.
     """
     smooths = smooth if isinstance(smooth, (list, tuple)) else [smooth]
-    multi = len(smooths) > 1
+    # 列名に平滑化の接尾辞(_sauto など)を付けるか。既定は平滑化が複数のときだけ
+    multi = len(smooths) > 1 if suffix is None else suffix
     prior = float(y_train_fold.mean())
     te_tr = pd.DataFrame(index=keys_train_fold.index)
     te_others = [pd.DataFrame(index=f.index) for f in other_frames]
@@ -410,109 +333,37 @@ def single_keys(kind: str = "all"):
     raise ValueError(kind)
 
 
-# 【不採用】2 列の交互作用キーの一覧を返す
-def pair_keys(kind: str = "cat"):
-    """2-way interaction keys."""
-    if kind == "cat":
-        return [tuple(p) for p in itertools.combinations(CATEGORICAL_COLS, 2)]
-    if kind == "cat_lownum":
-        return [
-            (a, b) for a in CATEGORICAL_COLS for b in LOW_CARD_NUMERIC
-        ]
-    if kind == "lownum":
-        return [tuple(p) for p in itertools.combinations(LOW_CARD_NUMERIC, 2)]
-    if kind == "all":
-        cols = CATEGORICAL_COLS + LOW_CARD_NUMERIC
-        return [tuple(p) for p in itertools.combinations(cols, 2)]
-    raise ValueError(kind)
-
-
-# 【不採用】3 列の交互作用キーの一覧を返す
-def triple_keys(kind: str = "cat"):
-    """【打ち止め】3列を連結した交互作用キー."""
-    if kind == "cat":
-        return [tuple(p) for p in itertools.combinations(CATEGORICAL_COLS, 3)]
-    if kind == "selected":
-        return [
-            ("Home_Charging_Possible", "Range_Anxiety_Level", "Subsidy_Available"),
-            ("City_Type", "Current_Car_Type", "Range_Anxiety_Level"),
-            ("Home_Charging_Possible", "Charging_Stations_Near_Home", "Range_Anxiety_Level"),
-            ("Environmental_Concern_Level", "Range_Anxiety_Level", "Home_Charging_Possible"),
-            ("City_Type", "Home_Charging_Possible", "Environmental_Concern_Level"),
-        ]
-    raise ValueError(kind)
-
-
-# 【不採用】全列を連結したキー(行フィンガープリント)を作る
-def all_columns_key():
-    """One key made of every raw column (row fingerprint).
-
-    WARNING (measured 2026-09-12): the full 13-column key is **unique for every
-    single train row** (668,665 distinct keys / 668,665 rows, 100% singletons),
-    so both TE and Count degenerate to a constant. Kept only for reference -
-    use `fingerprint_key()` subsets instead.
-    """
-    return [tuple(NUMERIC_COLS + CATEGORICAL_COLS)]
-
-
-# fingerprint subsets that actually have repeated rows
-FP_SETS = {
-    # 142,801 keys / median count 10 / only 8.8% singletons  <- the sweet spot
-    "fp1": CATEGORICAL_COLS
-    + [
-        "Number_of_Cars_Owned",
-        "Charging_Stations_Near_Home",
-        "Charging_Stations_Near_Work",
-        "Environmental_Concern_Level",
-    ],
-    # 313 keys / median count 13,652 -> full 6-way categorical interaction
-    "fp2": list(CATEGORICAL_COLS),
-    # 150,264 keys / median count 8
-    "fp3": list(LOW_CARD_NUMERIC),
-    # cat6 + the two binary-ish charging signals only
-    "fp4": CATEGORICAL_COLS
-    + ["Charging_Stations_Near_Home", "Environmental_Concern_Level"],
-}
-
-
-# 【不採用】列の部分集合を連結したキーを作る
-def fingerprint_key(name: str):
-    """Single multi-column key for the named fingerprint subset."""
-    return [tuple(FP_SETS[name])]
-
-
 # --------------------------------------------------------------------------
-# 重複している列(同じ情報を形だけ変えて持っている列)の一覧
+# 本番の構成(作る列の設計)
 # --------------------------------------------------------------------------
-# 他の列と同じ情報しか持たない列の名前を返す(--dedup)
-def dedup_columns():
-    """他の列と同じ情報しか持たない列の名前を返す(--dedup で学習から外す)。
+# 値の種類（ユニーク値）が多い数値列。digit・Count・平滑化3種の Target Encoding はこの2列だけに作る
+HIGH_CARD_NUMERIC = ["Annual_Income_USD", "Daily_Commute_km"]
+TRIPLE_SMOOTHS = ["auto", 10.0, 100.0]
+# EDA で見つかった唯一の交互作用: 自宅充電の可否 × 自宅近くの充電スタンド数
+HOME_PAIR = ("Home_Charging_Possible", "Charging_Stations_Near_Home")
 
-    - 値の種類（ユニーク値）が少ない11列の TE は、平滑化 auto / 10 / 100 の順位相関が 1.00000 になる
-      (1値あたり数万行あり、平滑化の強さが効かない)。auto だけ残し 10 / 100 を外す
-    - カテゴリ列の Count は、カテゴリを出現回数に言い換えただけ。LightGBM はカテゴリを
-      直接好きな組に分けられるので、新しい分け方を足さない
-    - 値が 0〜9 に収まる列の 1 の位は、元の列と値まで同じ
+
+# 本番で作る Target Encoding の (キー, 平滑化) の一覧を返す。この順番がそのまま列の並び順になる
+def te_plan():
+    """数値列の順(値の種類が多い2列は平滑化3種、少ない5列は auto だけ)→ Smooth Keys 4本(3種)→ 組み合わせ1組(auto)。
+
+    カテゴリ列には作らない(LightGBM はカテゴリのまま好きな組に分けられる)。
+    列の並び順は学習結果に影響する(列サンプリングが列の位置で決まる)ので変えないこと。
     """
-    lowcard = CATEGORICAL_COLS + LOW_CARD_NUMERIC
-    te_dups = [f"te_{c}_s{s}" for c in lowcard for s in ("10", "100")]
-    cnt_cat = [f"cnt_{c}" for c in CATEGORICAL_COLS]
-    digit_dups = ["Number_of_Cars_Owned_digit0", "Environmental_Concern_Level_digit0"]
-    # 組み合わせキー(自宅充電の可否 × 自宅スタンド数。te2home)も 30 種類しかないので auto だけ残す
-    pair_dups = [f"te_Home_Charging_PossibleXCharging_Stations_Near_Home_s{s}" for s in ("10", "100")]
-    return te_dups + cnt_cat + digit_dups + pair_dups
+    plan = [(c, TRIPLE_SMOOTHS if c in HIGH_CARD_NUMERIC else ["auto"]) for c in NUMERIC_COLS]
+    plan += [(k, TRIPLE_SMOOTHS) for k in SMOOTH_KEYS]
+    plan.append((HOME_PAIR, ["auto"]))
+    return plan
 
 
-# エンコーディングを絞るときに外す列の名前を返す(--lean)
-def lean_columns():
-    """エンコーディングを絞るときに外す列(--lean。dedup_columns() の後に適用する)。
-
-    2026-09-27 の検証(E1〜E5)で、値の種類（ユニーク値）が少ない数値列は「元の列 + TE」だけで足りると分かった。
-    - 値の種類（ユニーク値）が少ない数値列(年齢・保有台数・スタンド数2列・環境意識)の Count と digit
-      → TE が値ごとの購入率を渡しているので、並び順を変えるだけの Count / digit は情報を足さない
-    - カテゴリ列の TE → LightGBM はカテゴリを直接好きな組に分けられる
-    TE を外すと有意に悪化する(Count だけ -0.000059、digit だけ -0.000062、なし -0.000094)。
-    """
-    digits = [f"{c}_digit{k}" for c in ("Age", "Charging_Stations_Near_Home", "Charging_Stations_Near_Work")
-              for k in (0, 1)]
-    return [f"cnt_{c}" for c in LOW_CARD_NUMERIC] + digits + [f"te_{c}_sauto" for c in CATEGORICAL_COLS]
+# キーごとに平滑化を変えて、fold 内で Out-of-Fold の Target Encoding を作る(plan の順に列を並べる)
+def target_encode_plan(keys_train_fold, y_train_fold, other_frames, plan, n_inner: int = 5, seed: int = 42):
+    """te_plan() のとおりに Target Encoding を作る。値は target_encode_fold と同じ(キーごとに独立に計算するため)。"""
+    parts_fit, parts_other = [], [[] for _ in other_frames]
+    for key, smooths in plan:
+        a, bs = target_encode_fold(keys_train_fold, y_train_fold, other_frames, [key], smooth=list(smooths),
+                                   n_inner=n_inner, seed=seed, suffix=True)
+        parts_fit.append(a)
+        for lst, b in zip(parts_other, bs):
+            lst.append(b)
+    return pd.concat(parts_fit, axis=1), [pd.concat(lst, axis=1) for lst in parts_other]
