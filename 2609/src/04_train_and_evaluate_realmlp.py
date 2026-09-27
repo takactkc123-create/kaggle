@@ -1,7 +1,9 @@
 """RealMLP (PyTorch) の学習・OOF生成スクリプト.
 
-ベース実装: kernels/yekenot_realmlp/ps-s6-e9-realmlp-pytorch.ipynb
+ベース実装: yekenot「PS|S6|E9: RealMLP · PyTorch」(Kaggle 公開ノートブック、Apache License 2.0)
+  https://www.kaggle.com/code/yekenot/ps-s6-e9-realmlp-pytorch
  (RealMLP-TD: PBLD周期埋め込み + NTP線形 + 残差ブロック + n_ens 内部アンサンブル)
+ モデル本体と設定はこの実装に基づく。fold 分割(全モデル共通)と特徴量の一部を変更している。
 
 目的:
   GBDT3種 (LGBM/XGB/CatBoost, OOF相関 0.993-0.995) に対して非相関な NN の OOF を作り、

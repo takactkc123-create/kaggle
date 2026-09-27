@@ -1,7 +1,8 @@
 """RealMLP (NN) 用の特徴量エンジニアリング関数群.
 
 方針:
-- ベースは公開カーネル yekenot/ps-s6-e9-realmlp-pytorch (kernels/yekenot_realmlp/) の前処理。
+- ベースは yekenot「PS|S6|E9: RealMLP · PyTorch」(Kaggle 公開ノートブック、Apache License 2.0)の前処理。
+  https://www.kaggle.com/code/yekenot/ps-s6-e9-realmlp-pytorch
 - GBDT 陣 (fe_lgbm / fe_xgb / fe_catboost) とは意図的に別系統の前処理を使い、
   OOF の非相関性 (多様性) を稼ぐことを目的とする。
 - NN 向けなので「カテゴリは整数コード化して embedding / one-hot」「数値は robust scaling」

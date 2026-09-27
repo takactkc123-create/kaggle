@@ -2,198 +2,126 @@
 
 Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.com/competitions/playground-series-s6e9)
 (Predicting Electric Vehicle Purchases、二値分類・評価指標 **ROC-AUC**) のプロジェクトです。
-実験ログは [Log.md](Log.md) に記録します。
+実験の経過・数値の根拠は [Log.md](Log.md)(ローカルのみ)、各モデルの詳細は `.claude/agents/*.md` と `docs/fe_results_*.md` を参照。
 
 ## 最優先事項
 
 - **ROC-AUC の改善を最優先の目的とする。** あらゆる作業判断は「CV AUC が上がるか」を基準に評価する。
-- 目標は**リーダーボード上位15%以内**。2026-09-23 時点で **320位 / 2,732チーム(上位11.7%)** と暫定的に圏内
-  (15%のラインは 409位)。**参加チームは増え続けるため、同じスコアでも順位は下がる。**
-  実際 9/21 266位 → 9/22 307位 → 9/23 320位 と、スコア据え置きのまま54位下がっている。
-- ~~当面の目標: CV AUC = 0.95~~ → **撤回**。較正した確率からラベルを再サンプリングして推定した
-  「完璧なモデルのAUC」は **0.9459 ± 0.0003**。2位以下が 0.94672 で既に理論上限付近であり到達不能。
-- 最終提出はアンサンブルになるため、**単体AUCだけでなく他モデルとの非相関性(特異性)も評価軸**とする。
-  ただし **非相関でありさえすれば効く、わけではない**(後述の Lookup Transformer の例)。
-
-## 現状(2026-09-23 時点)
-
-| 項目 | 値 |
-|---|---|
-| 最良CV(アンサンブル) | **0.946245**(最終提出 D) |
-| 最良 Public LB | **0.94645** |
-| 順位(2026-09-23 時点の暫定) | **320位 / 2,732チーム(上位11.7%)** |
-| 提出構成 | **LightGBM 1/3 + XGBoost 1/3 + RealMLP 1/3**(rank平均)。最終提出は D と元の構成の2本 |
-| LB1位 | 0.94945(2位は 0.94672)。**1位だけ 0.0027 離れている**。Public は test の20%のみで算出されるため、この幅は Private で縮む可能性がある |
-
-| モデル | ベースライン | 現在 |
-|---|---|---|
-| LightGBM | 0.94123 | **0.94610**(アンサンブル採用) |
-| XGBoost | 0.94124 | **0.94609**(アンサンブル採用) |
-| RealMLP | — | **0.94590**(アンサンブル採用。多様性の供給源) |
-| CatBoost | 0.94156 | 0.94592(**重み0**。他GBDTと同質で選ばれない) |
-| Lookup Transformer | — | 0.94425(**不採用**。相関0.982と理想的だが入れると有意に悪化) |
-
-**改善の内訳**: FE +0.004 / 収束確認 +0.0008 / 列サブサンプリング +0.0002 / RealMLP追加 +0.0005。
-**大半は特徴量エンジニアリング**で、パラメータ側で効いたのは「見落としの是正」2件のみ。
+- 目標は**リーダーボード上位15%以内**。参加チームは増え続けるため、**同じスコアでも順位は下がる**
+  (9/21 266位 → 9/23 320位。スコアは据え置き)。
+- CV 0.95 は目標にしない。較正した確率から推定した「完璧なモデルの AUC」が **0.9459 ± 0.0003** で、到達不能。
+- 最終提出はアンサンブルなので、**単体 AUC に加えて他モデルとの非相関性も評価軸**とする。
+  ただし非相関でありさえすれば効くわけではない(下記「打ち止め」の Lookup Transformer)。
 
 ## データ特性(調査済み・再調査不要)
 
-- train 668,665行 / test 286,571行、**欠損値ゼロ**。目的変数 `Will_Buy_EV` は Yes 17.5% / No 82.5%。
-- 数値7列(id除く)・カテゴリ6列。値の種類（ユニーク値）の数は以下の通り:
+- train 668,665行 / test 286,571行、**欠損値ゼロ**。`Will_Buy_EV` は Yes 17.5% / No 82.5%。
+- 数値7列(id除く)・カテゴリ6列。小数は全列で1桁にそろった、合成データ特有の離散構造を持つ。
+- 値の種類（ユニーク値）の数: 年収 13,214 / 通勤距離 805 が多く、
+  Age 45・Charging_Stations_Near_Work 20・Near_Home 15・Environmental_Concern_Level 5・Number_of_Cars_Owned 4 は少ない。
+  カテゴリ列は 2〜4 種類。
+- 元データ(`data/EV_Adoption_and_Range_Anxiety_Dataset.csv`、1万行、CC0)は RealMLP の特徴量1列だけに使う。
+  **ないと黙って 37 列になりスコアが一致しない**(取得コマンドは README のセットアップ)。
 
-| 列 | nunique | 種別 |
-|---|---|---|
-| Age | 45 | 数値(値の種類（ユニーク値）が少ない) |
-| Annual_Income_USD | 13,214 | 数値(値の種類（ユニーク値）が多い) |
-| Daily_Commute_km | 805 | 数値(値の種類（ユニーク値）が中程度) |
-| Number_of_Cars_Owned | 4 | 数値(値の種類（ユニーク値）が少ない) |
-| Charging_Stations_Near_Home | 15 | 数値(値の種類（ユニーク値）が少ない) |
-| Charging_Stations_Near_Work | 20 | 数値(値の種類（ユニーク値）が少ない) |
-| Environmental_Concern_Level | 5 | 数値(値の種類（ユニーク値）が少ない) |
-| Gender / City_Type / Current_Car_Type | 3 / 3 / 4 | カテゴリ |
-| Home_Charging_Possible / Subsidy_Available / Range_Anxiety_Level | 2 / 2 / 3 | カテゴリ |
+## ここまでの経緯(時系列)
 
-- 小数は全列で1桁に統一されており、合成データ特有の離散構造を持つ。
+1. **前コンペ S6E8 の教訓(着手時)**: Hyperparameter Tuning より先に Feature Engineering とアンサンブル。
+   四則演算・ビン分割は無効で、**全列を厳密な値のまま Target Encoding** した施策だけが桁違いに効いた。
+   本コンペでも再現した(+0.003)。Target Encoding は必ず **fold 内で fit して検証行に適用**(リーク厳禁)。
+2. **ベースライン(09-08)**: カテゴリ列をそのまま渡した 13 列で 0.9412〜0.9416。
+3. **09-12**: 収束確認(+0.0008)、上位カーネル調査(元データの行追加は -0.00002 で無効、ノイズ床 0.00015、
+   fold 数は LB に効かない)、Triple Target Encoding + digit、**RealMLP 導入**(エポック増は打ち止め)。4 モデルで上位15%に到達。
+4. **09-18〜20**: FE Lead / Research Lead を新設。**paired DeLong 検定を導入**(下記「採否基準」)。
+   列サブサンプリング + 深さ制限(`colsample 0.3 + max_depth 5`)が見落としの是正として効いた。
+5. **09-21〜22**: Hyperparameter Tuning は 18 試行すべて誤差か悪化で打ち止め。Lookup Transformer は不採用。
+6. **09-23〜26**: EDA 由来の施策(列削減・補助金との組み合わせ・年収の近傍統計)はすべて不採用。
+7. **09-27**: 列の整理(`--dedup` / `--lean`)と交互作用1組を採用し、最終構成 D を決定(下記「現状」)。
 
-## 最重要の戦略ヒント(前コンペ S6E8 の教訓)
+**改善の内訳**: Feature Engineering +0.004 / 収束確認 +0.0008 / 列サブサンプリング +0.0002 / RealMLP 追加 +0.0005。
+パラメータ側で効いたのは「見落としの是正」2件だけ。
 
-- **HPO/Optuna より先に特徴量エンジニアリングとアンサンブルを追求すること。**
-  S6E8 では四則演算・ビン分割・閾値フラグ系のFEはほぼ無効(±0.0001)だった一方、
-  **「数値列も含めた全列を厳密な値のまま Target Encoding」** した施策のみが CV AUC +0.006 以上という
-  桁違いの改善を生んだ。Playground の合成データはラベルが特徴量の厳密値に紐づく確率から
-  サンプリングされているため、この構造が再現する可能性が高い。
-- 本コンペでも値の種類（ユニーク値）が少ない列が多く、**厳密値TE・カテゴリ交互作用TE・Count Encoding** が
-  最有力候補。四則演算FEは「やるべきだが期待値は低い」という前提で臨むこと。
-- TEは必ず **fold内でfitしてvalidationに適用**(リーク厳禁)。OOF AUCが不自然に跳ねたらリークを疑う。
+## 現状(2026-09-27 時点)
 
-## 上位カーネル調査で判明した重要事実(2026-09-12。詳細な調査記録はローカルのみ)
+| 項目 | 値 |
+|---|---|
+| 最終提出(2本) | **D**: CV 0.946245 / Public 0.94640(現在のコード)、**元の構成**: CV 0.946234 / Public **0.94645**(タグ `final-original-20260927`、成果物は `backup_final_original_20260927/`) |
+| 構成 | **LightGBM 1/3 + XGBoost 1/3 + RealMLP 1/3**(順位平均)。CatBoost は重み 0 |
+| 順位 | 320位 / 2,732チーム(上位11.7%。09-23 時点の暫定) |
+| LB 1位 | 0.94945(2位は 0.94672)。Public は test の 20% のみで算出 |
 
-- **元データ(original dataset)の行concatは効かない。** Playground定番の施策だが本コンペでは実測で
-  -0.00002。元データは10,000行しかなく668,665行の1.5%増にすぎず、かつ生成器が分布を変えている。
-  生成ルール(buy_score)を特徴量にしても -0.00002(importance 74%で1位を占めるのにスコアは動かない)。
-- **ノイズ床は 0.00015**(DeLong 導入後は 0.00003)。ただし **max_bin/border_count を動かす検証では
-  0.00033 に上がる**ため、その場合は基準を引き上げること(出典の著者自身が、この点を長く見落としていたと注記している)。
-- **fold数はLBに効かない**(5/10/15-foldでLB 0.94459/0.94460/0.94461)。CV比較はfold数を固定して行う。
-- **交互作用を禁止すると強くなる**という実測報告があり、我々の「交互作用は全滅」という知見と整合する。
-- 注意: 一部の上位カーネルは四則演算の交互作用を含むが、効果を切り分けた記載は見当たらない。
-  **我々の環境では実測で無効だったため、根拠なく取り込まない。**
+| モデル | ベースライン | 現在 | 列数 | 本番の設定 |
+|---|---|---|---|---|
+| LightGBM | 0.94123 | **0.94611** | 46 | `--dedup --lean`、交互作用 `te2home` |
+| XGBoost | 0.94124 | **0.94609** | 69 | `--dedup`(`--lean` は悪化傾向 z=-2.4〜-2.6 で不適用) |
+| CatBoost | 0.94156 | 0.94592 | 43 | `--dedup --lean`(重み 0) |
+| RealMLP | — | **0.94590** | 38 | `--combo-home`(交互作用) |
+
+- 交互作用「自宅充電の可否 × 自宅スタンド数」は採用基準に届かないが、CV 最高のため D に採用した。
+- 実行コマンドは README「現行ベストの再現コマンド」、**パラメータの正本は `src/05_hyperparameter_tuning.py` の `FIXED`**。
+  `notebooks/04_train_and_evaluate.ipynb` は 4 モデルを本番と同じ設定で学習し、OOF の一致と `FIXED` との一致を確認する。
 
 ## モデルリーダー体制
 
 指揮官(ユーザー・Claude本体=CLAUDE.md)の下に、モデル別の担当リーダー(サブエージェント)を配置する。
+担当範囲と手順は各定義ファイル `.claude/agents/<name>.md` を参照。
 
-| 担当 | 定義ファイル | FE関数群 | 実行スクリプト |
-|---|---|---|---|
-| LightGBM Lead | `.claude/agents/lgbm-lead.md` | `03_feature_engineering_lgbm.py` | `04_train_and_evaluate_lgbm.py` |
-| XGBoost Lead | `.claude/agents/xgb-lead.md` | `03_feature_engineering_xgb.py` | `04_train_and_evaluate_xgb.py` |
-| CatBoost Lead | `.claude/agents/catboost-lead.md` | `03_feature_engineering_catboost.py` | `04_train_and_evaluate_catboost.py` |
-| RealMLP Lead | `.claude/agents/realmlp-lead.md` | `03_feature_engineering_realmlp.py` | `04_train_and_evaluate_realmlp.py` |
-| **FE Lead**(競争しない) | `.claude/agents/fe-lead.md` | `03_feature_engineering_all.py` | モデル間の取りこぼしを横展開 |
-| **Research Lead**(競争しない) | `.claude/agents/research-lead.md` | — | Kaggle の Code / Discussion から新しい手を持ち込む |
-
-支援役2名(FE Lead / Research Lead)は自分のスコアを持たず、**他モデルが伸びたかで評価する**。
+| 担当 | 定義ファイル | 管轄 |
+|---|---|---|
+| LightGBM / XGBoost / CatBoost / RealMLP Lead | `lgbm-lead` / `xgb-lead` / `catboost-lead` / `realmlp-lead` | `03_feature_engineering_<model>.py` / `04_train_and_evaluate_<model>.py` |
+| **FE Lead**(競争しない) | `fe-lead` | `03_feature_engineering_all.py`。モデル間の取りこぼしを横展開 |
+| **Research Lead**(競争しない) | `research-lead` | Kaggle の Code / Discussion から新しい手を持ち込む |
 
 ### 競争ルール
 
-- 各リーダーは**自分のモデルのCV AUCで1位を目指して競う**。
-- ただし**他モデルの足を引っ張る行為は禁止**。他モデルのファイル(`03_feature_engineering_*.py` / `04_train_and_evaluate_*.py` で
-  自分の管轄外のもの)を編集・削除しない。共有ファイル(`Log.md` / `CLAUDE.md`)は追記のみ。
-- 有効だった知見は Log.md を通じて共有してよい(**知見の共有は推奨、実装の横取りは各自の責任で**)。
-- **審査は単体AUCだけでなくアンサンブル貢献度(他モデルOOFとの非相関性)も含む。**
-  ただし **2026-09-21 の実測で「非相関でさえあれば勝てる」わけではないと判明した**。
-  Lookup Transformer は相関 0.982(候補中もっとも非相関)ながら、単体差 0.0019 が埋まらず
-  アンサンブルに入れると**有意に悪化**した(w=0.10 で z=-4.5)。
-  `diversity beats strength` が成立するのは**単体スコアが同水準のとき**に限られる。
+- 各リーダーは**自分のモデルの CV AUC で1位を目指して競う**。支援役2名は**他モデルが伸びたか**で評価する。
+- **他モデルの足を引っ張る行為は禁止**。管轄外の `03_*` / `04_*` を編集・削除しない。共有ファイル(`Log.md` / `CLAUDE.md`)は追記のみ。
+- 有効だった知見は Log.md を通じて共有してよい(実装の横取りは各自の責任で)。
+- 審査はアンサンブル貢献度(非相関性)も含む。ただし `diversity beats strength` が成立するのは**単体スコアが同水準のとき**だけ。
 
 ## ファイル構成の規約
 
-**ファイル名の先頭の番号が工程の順番。**
+**ファイル名の先頭の番号が工程の順番**(一覧は README「プロセス全体像」)。
+`03_*` は Feature Engineering の**関数の定義のみ**、`04_*` がそれを import して CV 学習・評価・成果物出力、
+`05_*` は学習コードを持たず `04_*` を引数違いで呼ぶだけ、`07_*` は保存済みの予測を読むだけ。
 
-```
-01_eda.py                 # ① EDA
-02_baseline_<model>.py          # ② ベースライン
-03_feature_engineering_<model>.py          # ③ 特徴量エンジニアリング「関数」の定義のみ。実行コードを書かない
-04_train_and_evaluate_<model>.py      # ④ ③を import → CV学習 → 評価 → 成果物出力
-05_hyperparameter_tuning.py                 # ⑤ HPO(学習コードを持たず ④ を引数違いで呼ぶだけ)
-06_ensemble_hill_climbing.py  # ⑥ 貪欲法でブレンド + 採用モデル間の相関を出力
-07_compare_predictions.py         # ⑦ paired DeLong 検定(学習しない。保存済みOOFを読むだけ)
-feature_catalog.py           # 補助。工程ではないので番号なし
-submit/                   # submission_<model>.csv
-oof/                      # oof_<model>.npy, pred_<model>.npy(アンサンブル用・必須)
-importance/               # importance_<model>.png(feature importance 棒グラフ)
-docs/features_<tag>.json  # 各モデルが使っている列名(--dump-features で生成)
-```
+- CV は **StratifiedKFold(n_splits=5, shuffle=True, random_state=42)** で全モデル統一。**変更禁止**
+  (fold 分割を揃えないと OOF 同士のアンサンブル・相関評価・DeLong 検定ができない)。
+- 目的変数は `(train["Will_Buy_EV"] == "Yes").astype(int)`。`read_csv` までのフローは `02_baseline_*.py` と同一。
+- `04_*` に `--dump-features` を付けると、本番と同じコードパスで列名を `docs/features_<tag>.json` に書いて終了する。
+  **Feature Engineering を変えたら必ず再生成すること**。
+- `03_*` には捨てた施策の関数も記録として残す。本番で生きているかは `src/feature_catalog.py` の **`FUNC_STATUS`**
+  (〇33 / ✖30 / 補助8)が持ち、**採否を変えたらこの表も更新する**。`verify_status()` が JSON と突き合わせて矛盾を検出する。
 
-- `04_train_and_evaluate_<model>.py` に `--dump-features` を付けると、**fold 1 の学習行列を組み上げた直後に
-  列名を `docs/features_<tag>.json` へ書いて終了する**(学習しない)。本番と同じコードパスを通るので
-  列の取りこぼしがない。**FE を変えたら必ず再生成すること**(コマンドは README 参照)。
-  現行の列数は LightGBM 46 / XGBoost 69 / CatBoost 43 / RealMLP 38。
-  GBDT 3種は `--dedup` で、他の列と同じ情報しか持たない列(`dedup_columns()`)を外している(2026-09-27)。
-  LightGBM・CatBoost はさらに `--lean` で、値の種類（ユニーク値）が少ない数値列のエンコーディングを TE だけに絞っている(`lean_columns()`)。
-  XGBoost は絞ると悪化傾向(z=-2.4〜-2.6)だったので適用しない。
-  最終構成(D)では LightGBM・RealMLP に「自宅充電の可否 × 自宅スタンド数」の組み合わせを足している
-  (`te2home` / `--combo-home`。採用基準には届かないが CV 最高のため。2026-09-27)。
-  **最終提出は D(CV 0.946245 / Public 0.94640)と、元の構成 ①(CV 0.946234 / Public 0.94645)の2本。**
-  ① のコードはタグ `final-original-20260927`、成果物は `backup_final_original_20260927/`。
+## 採否基準(2026-09-20 から paired DeLong 検定)
 
-- **`03_feature_engineering_<model>.py` は採用した関数だけを置く場所ではない。** 検証して捨てた施策も
-  再検証しないための記録として残す。どれが本番で生きているかは `src/feature_catalog.py` の
-  **`FUNC_STATUS`** が持つ(現在 〇33 / ✖30 / 補助8 の計71関数)。
-  **FEを採用・不採用にしたらこの表も更新すること。**
-  `fd.verify_status()` が `docs/features_*.json` と突き合わせて矛盾を検出する。
-
-- `read_csv` までのフローは `02_baseline_*.py` と同一にする(data/train.csv, data/test.csv)。
-- CVは **StratifiedKFold(n_splits=5, shuffle=True, random_state=42)** で全モデル統一。
-  fold分割を揃えないとOOF同士のアンサンブル・相関評価ができないため、**変更禁止**。
-- 目的変数は `(train["Will_Buy_EV"] == "Yes").astype(int)`。
-
-## 採否基準(2026-09-21 更新: paired DeLong 検定に移行)
-
-**AUC を目視で比べるのをやめ、`src/07_compare_predictions.py` の paired DeLong 検定で判定する。**
-fold 分割が全モデル共通(`random_state=42`)なので、2つの予測の差から共通のノイズが差し引きで消え、
-判別できる下限が **0.00015 → 0.00003** と約5倍細かくなる。
+**AUC を目視で比べず、`src/07_compare_predictions.py` の paired DeLong 検定で判定する。**
+fold 分割が共通なので共通のノイズが差し引きで消え、判別できる下限が 0.00015 → 0.00003 になる。
 
 | | 旧基準 | 現行 |
 |---|---|---|
 | 判定 | 差分 ≥ +0.0002 | **差分 ≥ +0.00008 かつ z ≥ 3** |
 
-- **hill climbing の出力をそのまま信じないこと。** 貪欲法は OOF 上の偶然を拾う。
-  CV +0.000009(z=+1.57、有意でない)の構成を提出したら **LB は -0.00002 と逆に動いた**。
+- **hill climbing の出力をそのまま信じないこと。** CV +0.000009(z=+1.57)の構成を提出したら LB は -0.00002 だった。
 - 採否の結果は**成功も失敗も必ず Log.md に記録する**(重複検証の防止)。
 
-## 作業前の確認・警告ルール
-
-- 以下を実行する**前に**所要時間を見積もり、指揮官に報告・確認すること。無断実行しない。
-  - 大規模なハイパーパラメータ探索(Optuna等の多数トライアル)
-  - 多数のFEパターン × フルデータ5-fold の総当たり
-- **まず高速スクリーニング(サブサンプル or fold数削減 or n_estimators削減)で方向性を掴み、
-  有望なものだけフルCVで確認する**という段階設計を徹底する。
-- CatBoost はフル5-foldで10分以上かかる。スクリーニング時は必ず軽量設定を使うこと。
-
-## Kaggle CLI・API 利用時の注意
-
-- submission は**1日の残数を意識し、CV改善の根拠があるもののみ**提出する。
-- **提出は指揮官の承認を得てから行うこと**(各リーダーは勝手に submit しない)。
-- 同一データの再ダウンロードを繰り返さない(`data/` を優先利用)。
-
-## 打ち止めが確認済みのもの(2026-09-21 時点・再検証不要)
+## 打ち止めが確認済みのもの(再検証不要。時系列順、詳細は Log.md)
 
 | 分類 | 施策 |
 |---|---|
-| 特徴量 | 四則演算(全パターン) / 交互作用TE(2〜13列) / 行フィンガープリント(全行ユニークで原理的に不可) / 元データ追加 / エンコード方式の変更 / **列削減(単変量で効かない列を消すと -0.00044。`te_Age` が importance 5位)** / **補助金との組み合わせ(TE・積とも誤差。log-odds では足し算の関係)** / **年収の近傍統計(GBDT は誤差、RealMLP は単体のみ改善しアンサンブル ±0)** / **RealMLP の通勤距離÷年齢・通勤距離 /5 のキー(公開カーネルから移植したまま未検証だった。外しても誤差で 2026-09-27 に削除)** |
-| パラメータ | `num_leaves`(**`max_depth=5` が先に制約になっていた**) / CatBoost の列サンプリング(対称木のため有害) / RealMLP のエポック増(スケジュール連動) |
-| モデル追加 | Lookup Transformer(相関0.982でも有意に悪化) |
-| アンサンブル | 非有意な構成の採用(CV +0.000009 → LB -0.00002 で実証) / seed平均 |
+| 特徴量 | 四則演算(全パターン) / 交互作用の Target Encoding(2〜13列。D の1組を除く) / 行フィンガープリント(全行ユニーク) / 元データの行追加 / エンコード方式の変更 / **列削減(09-23。`Age` などを落とすと -0.00044。周辺相関が小さいこととモデルに不要なことは別物)** / 補助金との組み合わせ / 年収の近傍統計 / RealMLP の通勤距離÷年齢・通勤距離 /5 のキー(09-27 に削除) |
+| パラメータ | RealMLP のエポック増 / CatBoost の列サンプリング(対称木のため有害) / `num_leaves`(`max_depth=5` が先に制約) / Hyperparameter Tuning 全般(18 試行) |
+| モデル追加 | Lookup Transformer(相関 0.982 と最も非相関だが、単体差 0.0019 が埋まらず有意に悪化) |
+| アンサンブル | 非有意な構成の採用 / seed 平均 / CatBoost の重みを増やす |
 
-**残る選択肢はいずれも期待値が誤差水準**: Optuna(探索対象がHPOと同じ) / feature importance の再確認。
+残る選択肢(Optuna・feature importance の再確認)は、いずれも期待値が誤差水準。
 
-- ~~92列の特徴量削減~~ → **2026-09-23 に打ち止め**(Run 25)。EDA で「他の列と無相関かつ
-  目的変数とも無関係」と特定した `Age` / `Gender` / `Number_of_Cars_Owned` を落としたところ
-  **-0.00044(z=-14.19)**。列サンプリング率を補正しても変わらず、副作用ではなく情報損失だった。
-  **周辺相関が小さいことと、モデルにとって不要なことは別物。**
+## 作業のルール
 
-## ログ運用
-
-- 実験の経過は [Log.md](Log.md) に追記する。**新しいタスクに着手する前に必ず Log.md を読むこと。**
-- FEの試行は Log.md の「Feature Engineering 検証結果」表に、**効果あり/なしを分類して**記録する。
-- 過去に効果がなかった施策を重複して試さないよう、着手前に必ず表を確認すること。
+- 次を実行する**前に**所要時間を見積もり、指揮官に確認すること(無断実行しない):
+  大規模なハイパーパラメータ探索 / 多数の Feature Engineering パターン × フルデータ 5-fold の総当たり。
+- **まず高速スクリーニング(サブサンプル・fold 数削減・n_estimators 削減)で方向性を掴み、有望なものだけフル CV で確認する。**
+  CatBoost はフル 5-fold で 20 分前後かかるので、スクリーニングは必ず軽量設定で。重いジョブは1本ずつ実行する(8 コア)。
+- **提出は指揮官の承認を得てから**。1日の残数を意識し、CV 改善の根拠があるものだけ提出する。
+- 同じデータの再ダウンロードを繰り返さない(`data/` を優先利用)。
+- **新しいタスクの前に必ず Log.md を読む。** 実験の経過は Log.md に追記し、Feature Engineering の試行は
+  「Feature Engineering 検証結果」表に効果あり/なしを分類して記録する。過去に効かなかった施策は重複して試さない。
