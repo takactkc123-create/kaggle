@@ -57,6 +57,7 @@ LOW_CARD_NUMERIC = [
 # --------------------------------------------------------------------------
 # base loading / dtype handling
 # --------------------------------------------------------------------------
+# train.csv と test.csv を読み込む
 def load_data(data_dir: str = "data"):
     """Same read_csv flow as 02_baseline_lgbm.py."""
     train = pd.read_csv(f"{data_dir}/train.csv")
@@ -64,6 +65,7 @@ def load_data(data_dir: str = "data"):
     return train, test
 
 
+# カテゴリ列を train・test 共通の水準で category 型にする
 def make_categorical(train: pd.DataFrame, test: pd.DataFrame, cols=None):
     """Give train/test a shared category set (LightGBM native categorical)."""
     cols = CATEGORICAL_COLS if cols is None else cols
@@ -76,6 +78,7 @@ def make_categorical(train: pd.DataFrame, test: pd.DataFrame, cols=None):
     return train, test
 
 
+# 13 列すべてを値のまま整数キーにしたフレームを作る
 def make_key_frame(train: pd.DataFrame, test: pd.DataFrame):
     """Integer-coded copies of all 13 raw columns, used as encoder group keys.
 
@@ -97,6 +100,7 @@ def make_key_frame(train: pd.DataFrame, test: pd.DataFrame):
 # --------------------------------------------------------------------------
 # 1. arithmetic features
 # --------------------------------------------------------------------------
+# 【不採用】意味で選んだ比・差・和の列を作る
 def add_arithmetic_meaningful(df: pd.DataFrame) -> pd.DataFrame:
     """Domain-meaningful ratio / diff / sum features."""
     out = pd.DataFrame(index=df.index)
@@ -123,6 +127,7 @@ def add_arithmetic_meaningful(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+# 【不採用】数値列の全ペアの差・比・和の列を作る
 def add_arithmetic_all_pairs(df: pd.DataFrame, cols=None) -> pd.DataFrame:
     """diff / ratio / sum over every numeric pair.
 
@@ -141,6 +146,7 @@ def add_arithmetic_all_pairs(df: pd.DataFrame, cols=None) -> pd.DataFrame:
     return out
 
 
+# 【不採用】標準化した数値列の行ごとの平均・標準偏差を作る
 def add_group_means(df: pd.DataFrame) -> pd.DataFrame:
     """avg-style aggregates over standardised numeric columns."""
     out = pd.DataFrame(index=df.index)
@@ -159,6 +165,7 @@ def add_group_means(df: pd.DataFrame) -> pd.DataFrame:
 DIGIT_K = list(range(-4, 4))  # 10^-4 .. 10^3
 
 
+# 【不採用】補助金(0/1)と 3 列との積を作る
 def add_subsidy_products(df: pd.DataFrame) -> pd.DataFrame:
     """補助金(0/1)と、補助金がないと効きが横ばいになる3列との積。
 
@@ -174,6 +181,7 @@ def add_subsidy_products(df: pd.DataFrame) -> pd.DataFrame:
     }, index=df.index)
 
 
+# 数値列を桁ごとの列(digit features)にばらす
 def add_digit_features(
     df: pd.DataFrame, cols=None, ks=None, keep: list | None = None
 ) -> pd.DataFrame:
@@ -209,6 +217,7 @@ def add_digit_features(
 # --------------------------------------------------------------------------
 # 1c. multi-scale "smooth keys"  (reference_URL.md S-3)
 # --------------------------------------------------------------------------
+# 年収・通勤距離を粗く丸めたキー(Smooth Keys)を追加する
 def add_smooth_keys(keys: pd.DataFrame, df: pd.DataFrame) -> pd.DataFrame:
     """Coarser resolutions of the two high-cardinality numeric columns.
 
@@ -236,6 +245,7 @@ SMOOTH_KEYS = ["sk_inc10", "sk_inc100", "sk_inc1000", "sk_commute"]
 # --------------------------------------------------------------------------
 # 2. count / frequency encoding (unsupervised -> fit on train+test)
 # --------------------------------------------------------------------------
+# 1 列または複数列のキーを 1 本の系列にする
 def _key_series(frame: pd.DataFrame, key):
     if isinstance(key, str):
         return frame[key]
@@ -246,6 +256,7 @@ def _key_series(frame: pd.DataFrame, key):
     return codes
 
 
+# キーの値ごとの出現回数を列にする(train と test をまとめて数える)
 def count_encode(keys_tr: pd.DataFrame, keys_te: pd.DataFrame, keys, freq: bool = True):
     """Count / frequency encoding fitted on train+test concatenated.
 
@@ -273,12 +284,14 @@ def count_encode(keys_tr: pd.DataFrame, keys_te: pd.DataFrame, keys, freq: bool 
 # --------------------------------------------------------------------------
 # 3. target encoding (fold-internal, leak free)
 # --------------------------------------------------------------------------
+# キーごとの購入者数と行数を集計する
 def _te_agg(key_s: pd.Series, y: np.ndarray):
     """(sum, count) per key - the sufficient statistics shared by all smooths."""
     g = pd.DataFrame({"k": key_s.to_numpy(), "y": y}).groupby("k", observed=True)["y"]
     return g.agg(["sum", "count"])
 
 
+# 集計から平滑化した購入率の対応表を作る
 def _te_map_from_agg(agg: pd.DataFrame, prior: float, smooth):
     """Shrunken mean per key.
 
@@ -301,10 +314,12 @@ def _te_map_from_agg(agg: pd.DataFrame, prior: float, smooth):
     return pd.Series(vals, index=agg.index)
 
 
+# キーと目的変数から、平滑化した購入率の対応表を作る
 def _fit_te_map(key_s: pd.Series, y: np.ndarray, prior: float, smooth):
     return _te_map_from_agg(_te_agg(key_s, y), prior, smooth)
 
 
+# 平滑化の強さを列名用の文字列にする
 def _smooth_tag(smooth) -> str:
     if isinstance(smooth, str):
         return smooth
@@ -312,6 +327,7 @@ def _smooth_tag(smooth) -> str:
     return str(int(f)) if f == int(f) else str(f)
 
 
+# fold 内で Out-of-Fold の Target Encoding を作る
 def target_encode_fold(
     keys_train_fold: pd.DataFrame,
     y_train_fold: np.ndarray,
@@ -382,6 +398,7 @@ def target_encode_fold(
 # --------------------------------------------------------------------------
 # key set builders
 # --------------------------------------------------------------------------
+# Target Encoding・Count に使う単独列のキーの一覧を返す
 def single_keys(kind: str = "all"):
     """単独列の TE / Count キー一覧. kind='all'/'cat'/'num' で絞る."""
     if kind == "all":
@@ -393,6 +410,7 @@ def single_keys(kind: str = "all"):
     raise ValueError(kind)
 
 
+# 【不採用】2 列の交互作用キーの一覧を返す
 def pair_keys(kind: str = "cat"):
     """2-way interaction keys."""
     if kind == "cat":
@@ -409,6 +427,7 @@ def pair_keys(kind: str = "cat"):
     raise ValueError(kind)
 
 
+# 【不採用】3 列の交互作用キーの一覧を返す
 def triple_keys(kind: str = "cat"):
     """【打ち止め】3列を連結した交互作用キー."""
     if kind == "cat":
@@ -424,6 +443,7 @@ def triple_keys(kind: str = "cat"):
     raise ValueError(kind)
 
 
+# 【不採用】全列を連結したキー(行フィンガープリント)を作る
 def all_columns_key():
     """One key made of every raw column (row fingerprint).
 
@@ -455,6 +475,7 @@ FP_SETS = {
 }
 
 
+# 【不採用】列の部分集合を連結したキーを作る
 def fingerprint_key(name: str):
     """Single multi-column key for the named fingerprint subset."""
     return [tuple(FP_SETS[name])]
@@ -463,6 +484,7 @@ def fingerprint_key(name: str):
 # --------------------------------------------------------------------------
 # 重複している列(同じ情報を形だけ変えて持っている列)の一覧
 # --------------------------------------------------------------------------
+# 他の列と同じ情報しか持たない列の名前を返す(--dedup)
 def dedup_columns():
     """他の列と同じ情報しか持たない列の名前を返す(--dedup で学習から外す)。
 
@@ -481,6 +503,7 @@ def dedup_columns():
     return te_dups + cnt_cat + digit_dups + pair_dups
 
 
+# エンコーディングを絞るときに外す列の名前を返す(--lean)
 def lean_columns():
     """エンコーディングを絞るときに外す列(--lean。dedup_columns() の後に適用する)。
 

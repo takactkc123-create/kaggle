@@ -53,6 +53,7 @@ LOW_CARD_NUMERIC = [
 # ---------------------------------------------------------------------------
 
 
+# 数値列はそのまま、カテゴリ列は category 型にした基本のフレームを作る
 def make_base(train: pd.DataFrame, test: pd.DataFrame):
     """Baseline feature frames: numeric as-is + categorical as pandas Categorical.
 
@@ -63,6 +64,7 @@ def make_base(train: pd.DataFrame, test: pd.DataFrame):
     return as_native_category(tr, te, CATEGORICAL_COLS)
 
 
+# カテゴリ列を train・test 共通の水準で category 型にする
 def as_native_category(tr: pd.DataFrame, te: pd.DataFrame, cols):
     """Align category sets across train/test and cast to pandas Categorical."""
     tr = tr.copy()
@@ -74,6 +76,7 @@ def as_native_category(tr: pd.DataFrame, te: pd.DataFrame, cols):
     return tr, te
 
 
+# カテゴリ列を整数コードにする
 def as_ordinal(tr: pd.DataFrame, te: pd.DataFrame, cols):
     """Ordinal (label) encoding -> plain int codes. XGBoost treats them as numeric."""
     tr = tr.copy()
@@ -86,6 +89,7 @@ def as_ordinal(tr: pd.DataFrame, te: pd.DataFrame, cols):
     return tr, te
 
 
+# 【不採用】カテゴリ列を One-Hot Encoding する
 def as_onehot(tr: pd.DataFrame, te: pd.DataFrame, cols):
     """One-hot encoding of the given columns (drop original)."""
     n_tr = len(tr)
@@ -114,6 +118,7 @@ MEANINGFUL_PAIRS = [
 _EPS = 1e-6
 
 
+# 2 列の和・差・比・平均の列をまとめて作る
 def _arith_block(df: pd.DataFrame, pairs, ops=("diff", "ratio", "sum", "avg")):
     out = {}
     for a, b in pairs:
@@ -130,6 +135,7 @@ def _arith_block(df: pd.DataFrame, pairs, ops=("diff", "ratio", "sum", "avg")):
     return pd.DataFrame(out, index=df.index)
 
 
+# 【不採用】数値列の四則演算の列を追加する
 def add_arithmetic(tr, te, src_tr, src_te, pairs=None, ops=("diff", "ratio", "sum", "avg")):
     """Append arithmetic combinations of numeric columns.
 
@@ -142,6 +148,7 @@ def add_arithmetic(tr, te, src_tr, src_te, pairs=None, ops=("diff", "ratio", "su
     )
 
 
+# 【不採用】数値列の 2 列の組をすべて列挙する
 def all_numeric_pairs():
     """【打ち止め】数値列の全2列ペアを列挙する (四則演算用)."""
     pairs = []
@@ -156,6 +163,7 @@ def all_numeric_pairs():
 # ---------------------------------------------------------------------------
 
 
+# 値ごとの出現回数の列を追加する(train と test をまとめて数える)
 def add_count_encoding(tr, te, src_tr, src_te, cols, as_frequency=True, suffix="_ce"):
     """Count (or frequency) encoding computed over train+test combined."""
     tr = tr.copy()
@@ -178,6 +186,7 @@ def add_count_encoding(tr, te, src_tr, src_te, cols, as_frequency=True, suffix="
 DIGIT_KS = tuple(range(-4, 4))  # 10^-4 .. 10^3  -> 8 digits per column
 
 
+# 1 列を桁ごとの列にばらす
 def digit_block(df: pd.DataFrame, cols, ks=DIGIT_KS) -> pd.DataFrame:
     """Per-column decimal digits: ``(x // 10**k) % 10`` for k in ``ks``.
 
@@ -193,6 +202,7 @@ def digit_block(df: pd.DataFrame, cols, ks=DIGIT_KS) -> pd.DataFrame:
     return pd.DataFrame(out, index=df.index).astype("int8")
 
 
+# 数値列を桁ごとの列(digit features)にばらして追加する
 def add_digit_features(tr, te, src_tr, src_te, cols=None, ks=DIGIT_KS, drop_constant=True):
     """Append digit features built from the raw numeric columns.
 
@@ -227,6 +237,7 @@ SMOOTH_KEY_SPECS = (
 )
 
 
+# 1 列を指定の刻みで丸めたキーを作る
 def _smooth_key_block(src: pd.DataFrame, specs) -> pd.DataFrame:
     out = {}
     for name, col, div in specs:
@@ -235,6 +246,7 @@ def _smooth_key_block(src: pd.DataFrame, specs) -> pd.DataFrame:
     return pd.DataFrame(out, index=src.index)
 
 
+# 年収・通勤距離を粗く丸めたキー(Smooth Keys)を作る
 def make_smooth_keys(src_tr, src_te, specs=SMOOTH_KEY_SPECS):
     """Coarse-resolution keys of the high-cardinality numeric columns.
 
@@ -250,6 +262,7 @@ def make_smooth_keys(src_tr, src_te, specs=SMOOTH_KEY_SPECS):
 # ---------------------------------------------------------------------------
 
 
+# 【不採用】2 列を連結した交互作用のキーを作る
 def make_interaction_keys(src_tr, src_te, pairs):
     """Build string keys for column pairs -> returned as extra raw frames."""
     ktr = pd.DataFrame(index=src_tr.index)
@@ -261,6 +274,7 @@ def make_interaction_keys(src_tr, src_te, pairs):
     return ktr, kte
 
 
+# 【不採用】カテゴリ列の 2 列の組をすべて列挙する
 def cat_pairs(cols=None):
     """【打ち止め】カテゴリ列の2列ペアを列挙する (交互作用TE用)."""
     cols = CATEGORICAL_COLS if cols is None else cols
@@ -276,6 +290,7 @@ def cat_pairs(cols=None):
 # ---------------------------------------------------------------------------
 
 
+# 【不採用】学習行だけで Target Encoding の対応表を作る(Out-of-Fold なし)
 def fit_target_encoding(src_fit: pd.DataFrame, y_fit, cols, smoothing=20.0, min_samples=1):
     """Fit smoothed target encoding maps on the *training fold only*.
 
@@ -295,6 +310,7 @@ def fit_target_encoding(src_fit: pd.DataFrame, y_fit, cols, smoothing=20.0, min_
     return maps
 
 
+# 【不採用】Target Encoding の対応表を当てる
 def apply_target_encoding(src: pd.DataFrame, maps, suffix="_te"):
     """Apply fitted TE maps. Unseen values fall back to the fold prior."""
     out = {}
@@ -303,6 +319,7 @@ def apply_target_encoding(src: pd.DataFrame, maps, suffix="_te"):
     return pd.DataFrame(out, index=src.index)
 
 
+# 【不採用】学習行で作った Target Encoding を学習・検証・test に当てる
 def fit_apply_te_cv(src_tr, src_te, y, cols, train_idx, valid_idx, smoothing=20.0, min_samples=1):
     """Convenience: fit on train_idx rows, return (te_train, te_valid, te_test).
 
@@ -320,6 +337,7 @@ def fit_apply_te_cv(src_tr, src_te, y, cols, train_idx, valid_idx, smoothing=20.
     )
 
 
+# 【不採用】Out-of-Fold の Target Encoding(平滑化 1 種類)を作る
 def fit_apply_te_cv_nested(
     src_tr,
     src_te,
@@ -374,6 +392,7 @@ def fit_apply_te_cv_nested(
 # ---------------------------------------------------------------------------
 
 
+# 平滑化の強さを列名用の文字列にする
 def _smooth_tag(sm):
     if sm == "auto":
         return "a"
@@ -381,6 +400,7 @@ def _smooth_tag(sm):
     return str(int(f)) if f == int(f) else str(f).replace(".", "p")
 
 
+# 【不採用】平滑化を複数並べた Target Encoding の対応表を作る
 def fit_target_encoding_multi(src_fit, y_fit, cols, smoothings=(20.0,), min_samples=1):
     """Fit TE maps for *several* smoothing strengths at once.
 
@@ -419,6 +439,7 @@ def fit_target_encoding_multi(src_fit, y_fit, cols, smoothings=(20.0,), min_samp
     return maps
 
 
+# 【不採用】平滑化を複数並べた対応表をまとめて当てる
 def apply_target_encoding_multi(src: pd.DataFrame, maps):
     """複数 smooth の TE マップをまとめて適用する."""
     out = {}
@@ -427,6 +448,7 @@ def apply_target_encoding_multi(src: pd.DataFrame, maps):
     return pd.DataFrame(out, index=src.index)
 
 
+# Target Encoding のキー列を train・test 共通の整数コードにする
 def prepare_te_codes(src_tr, src_te, cols):
     """Factorize every TE key column over train+test ONCE -> int32 codes.
 
@@ -447,6 +469,7 @@ def prepare_te_codes(src_tr, src_te, cols):
     return codes_tr, codes_te, ncats
 
 
+# 1 列について、平滑化ごとの購入率の配列を作る
 def _encode_one_column(codes, y, ncat, smoothings, prior, y_var, min_samples):
     """Return one float32 encoding array (indexed by code) per smoothing."""
     cnt = np.bincount(codes, minlength=ncat).astype("float64")
@@ -471,6 +494,7 @@ def _encode_one_column(codes, y, ncat, smoothings, prior, y_var, min_samples):
     return out
 
 
+# fold 内で Out-of-Fold の Target Encoding を平滑化 3 種で作る
 def fit_apply_te_cv_nested_multi(
     codes_tr,
     codes_te,
@@ -542,6 +566,7 @@ def fit_apply_te_cv_nested_multi(
 # ---------------------------------------------------------------------------
 
 
+# 【不採用】スタンド数などの行ごとの最小・最大・合計を作る
 def add_row_aggregates(tr, te, src_tr, src_te):
     """Simple row-wise aggregates over the charging-station / concern block."""
     tr = tr.copy()
@@ -558,6 +583,7 @@ def add_row_aggregates(tr, te, src_tr, src_te):
 # ---------------------------------------------------------------------------
 # 重複している列(同じ情報を形だけ変えて持っている列)の一覧
 # ---------------------------------------------------------------------------
+# 他の列と同じ情報しか持たない列の名前を返す(--dedup)
 def dedup_columns():
     """他の列と同じ情報しか持たない列の名前を返す(--dedup で学習から外す)。
 

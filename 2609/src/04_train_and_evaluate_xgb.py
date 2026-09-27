@@ -44,6 +44,7 @@ ALL_COLS = fe.NUMERIC_COLS + fe.CATEGORICAL_COLS
 LOWCARD_ALL = fe.LOW_CARD_NUMERIC + fe.CATEGORICAL_COLS
 
 
+# 実験パターンの設定を既定値から作り、指定分だけ上書きする
 def _p(**kw):
     base = dict(
         enc="cat",
@@ -208,6 +209,7 @@ PATTERNS = {
 # ---------------------------------------------------------------------------
 
 
+# fold によらない特徴量(生の列・digit・Count など)を組み上げる
 def build_static(train_raw, test_raw, cfg):
     """Build the fold-independent part of the feature matrix."""
     cat_cols = list(fe.CATEGORICAL_COLS)
@@ -252,6 +254,7 @@ def build_static(train_raw, test_raw, cfg):
     return tr, te
 
 
+# fold ごとの Target Encoding に使うキーのフレームと列名を返す
 def build_te_sources(train_raw, test_raw, cfg):
     """Raw frames (train, test) + column list used for fold-wise target encoding."""
     if not cfg["te_cols"] and not cfg["te_inter"] and not cfg["smooth_keys"]:
@@ -283,6 +286,7 @@ def build_te_sources(train_raw, test_raw, cfg):
 # ---------------------------------------------------------------------------
 
 
+# XGBoost を 5-fold で学習し、OOF 予測と test 予測を返す
 def run_cv(cfg, args):
     train = pd.read_csv("data/train.csv")
     test = pd.read_csv("data/test.csv")
@@ -428,6 +432,7 @@ def run_cv(cfg, args):
     return auc
 
 
+# OOF・test 予測・提出ファイル・重要度の図を保存する
 def save_artifacts(train, test, y, oof, test_pred, importances, feat_names, auc, suffix=""):
     for d in ("submit", "oof", "importance"):
         os.makedirs(d, exist_ok=True)
@@ -457,6 +462,7 @@ def save_artifacts(train, test, y, oof, test_pred, importances, feat_names, auc,
           f"oof/pred_xgb{suffix}.npy, importance/importance_xgb{suffix}.png", flush=True)
 
 
+# 引数を読み、学習・評価・保存を行う
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pattern", default="base")

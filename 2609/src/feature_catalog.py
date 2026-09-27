@@ -45,6 +45,7 @@ _RULES = [
 ]
 
 
+# 列名を特徴量の種類に振り分ける
 def classify(name: str) -> str:
     """列名を FE の種類に振り分ける。未知のものは『その他の生成列』。"""
     if name in RAW_COLS:
@@ -58,6 +59,7 @@ def classify(name: str) -> str:
     return "その他の生成列"
 
 
+# Target Encoding の列名から元のキー名を取り出す
 def te_key_of(name: str) -> str:
     """TE 列から元になったキー名を取り出す。
 
@@ -74,6 +76,7 @@ def te_key_of(name: str) -> str:
     return s
 
 
+# 列名の一覧を docs/features_<tag>.json に書き出す
 def dump(tag: str, model: str, columns, cat_features=None, note: str = "") -> str:
     """列名一覧を docs/features_<tag>.json に書き出してパスを返す。"""
     cols = [str(c) for c in columns]
@@ -93,6 +96,7 @@ def dump(tag: str, model: str, columns, cat_features=None, note: str = "") -> st
     return path
 
 
+# 書き出した列名の JSON を読む
 def load(tag: str) -> dict:
     """ダンプ済み JSON を読む(ノートブック用)。"""
     with open(os.path.join(OUT_DIR, f"features_{tag}.json"), encoding="utf-8") as f:
@@ -199,6 +203,7 @@ FUNC_STATUS = {
 }
 
 
+# 関数の採否(記号と根拠)を返す
 def status_of(module: str, func: str):
     """(記号, 根拠) を返す。未登録なら ("?", "未分類")。"""
     return FUNC_STATUS.get((module, func), ("?", "未分類"))
@@ -223,6 +228,7 @@ _MODULE_OF_TAG = {"lgbm": "03_feature_engineering_lgbm", "xgb": "03_feature_engi
                   "catboost": "03_feature_engineering_catboost", "realmlp": "03_feature_engineering_realmlp"}
 
 
+# 採否表と docs/features_<tag>.json の矛盾を洗い出す
 def verify_status(tags=("lgbm", "xgb", "catboost", "realmlp")):
     """採否表と docs/features_<tag>.json の矛盾を洗い出して行のリストで返す。
 

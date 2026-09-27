@@ -31,6 +31,7 @@ N_SPLITS = 5  # fold definition is fixed across all three models - do not change
 SEED = 42
 
 
+# コマンドライン引数の定義を作る
 def build_parser():
     p = argparse.ArgumentParser()
     p.add_argument("--patterns", default="base", help="comma separated FE patterns")
@@ -97,6 +98,7 @@ def build_parser():
     return p
 
 
+# LightGBM を 5-fold で学習・評価し、成果物を保存する
 def main():
     args = build_parser().parse_args()
     pats = [s.strip() for s in args.patterns.split(",") if s.strip()]

@@ -45,6 +45,7 @@ ALL_COMPONENTS = {
 TRIPLE_SMOOTHS = [10.0, 20.0, 100.0]
 
 
+# コマンドライン引数を読む
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("--fe", default="base", help="comma separated FE components")
@@ -103,6 +104,7 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+# --fe の指定に従って特徴量を組み上げる(fold によらない部分)
 def build_features(components: set[str], rows: int, seed: int = 42):
     train = pd.read_csv("data/train.csv")
     test = pd.read_csv("data/test.csv")
@@ -189,6 +191,7 @@ def build_features(components: set[str], rows: int, seed: int = 42):
     return train, test, X, y, X_test, feature_cols, cat_features, te_cols, drop_after_te
 
 
+# CatBoost を 5-fold で学習・評価し、成果物を保存する
 def main() -> None:
     args = parse_args()
     components = {c.strip() for c in args.fe.split(",") if c.strip()}

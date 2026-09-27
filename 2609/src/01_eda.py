@@ -58,6 +58,7 @@ LOW_CARD_NUM = [c for c in NUM_COLS if train[c].nunique() <= LOW_CARD_MAX]
 HIGH_CARD_NUM = [c for c in NUM_COLS if train[c].nunique() > LOW_CARD_MAX]
 
 
+# 現在の図を datacheck/ に保存して閉じる
 def save(name, show=False):
     plt.tight_layout()
     path = os.path.join(SAVE_DIR, name)
@@ -68,12 +69,14 @@ def save(name, show=False):
     plt.close()
 
 
+# n 枚の図を並べる格子の行数・列数を決め、図の枠を作る
 def grid(n, n_cols=4, w=16, h=4):
     n_rows = (n + n_cols - 1) // n_cols
     plt.figure(figsize=(w, h * n_rows))
     return n_rows, n_cols
 
 
+# 目的変数の件数と比率を棒グラフにする
 def plot_target_distribution(df, target, show=False):
     counts = df[target].value_counts()
     plt.figure(figsize=(6, 4))
@@ -86,6 +89,7 @@ def plot_target_distribution(df, target, show=False):
     save("01_target_distribution.png", show)
 
 
+# カテゴリ列ごとの件数を、購入の有無で積み上げて描く
 def plot_categorical_histograms(df, target, show=False):
     n_rows, n_cols = grid(len(CAT_COLS), n_cols=3)
     for i, col in enumerate(CAT_COLS):
@@ -99,6 +103,7 @@ def plot_categorical_histograms(df, target, show=False):
     save("02_categorical_hist.png", show)
 
 
+# 数値列ごとの分布をヒストグラムで描く
 def plot_numeric_histograms(df, target, show=False):
     n_rows, n_cols = grid(len(NUM_COLS))
     for i, col in enumerate(NUM_COLS):
@@ -114,6 +119,7 @@ def plot_numeric_histograms(df, target, show=False):
     save("03_numeric_hist.png", show)
 
 
+# 値の種類（ユニーク値）が多い数値列の分布を対数軸で描く
 def plot_numeric_log_histograms(df, target, show=False):
     n_rows, n_cols = grid(len(HIGH_CARD_NUM), n_cols=2, w=12)
     for i, col in enumerate(HIGH_CARD_NUM):
@@ -125,6 +131,7 @@ def plot_numeric_log_histograms(df, target, show=False):
     save("04_numeric_log_hist.png", show)
 
 
+# 数値列と目的変数の相関をヒートマップにする
 def plot_correlation_heatmap(df, target, show=False):
     corr_df = df[NUM_COLS].copy()
     corr_df[target] = (df[target] == "Yes").astype(int)
@@ -136,6 +143,7 @@ def plot_correlation_heatmap(df, target, show=False):
     save("05_correlation_heatmap.png", show)
 
 
+# 数値列の分布を、購入の有無で分けた箱ひげ図にする
 def plot_boxplots_by_target(df, target, show=False):
     n_rows, n_cols = grid(len(NUM_COLS))
     for i, col in enumerate(NUM_COLS):
@@ -145,6 +153,7 @@ def plot_boxplots_by_target(df, target, show=False):
     save("06_boxplots_by_target.png", show)
 
 
+# カテゴリ列の値ごとの購入率を棒グラフにする
 def plot_target_rate_by_category(df, target, show=False):
     y = (df[target] == "Yes").astype(int)
     base = y.mean()
@@ -162,6 +171,7 @@ def plot_target_rate_by_category(df, target, show=False):
     save("07_target_rate_by_category.png", show)
 
 
+# 数値列の値ごとの購入率を折れ線にする
 def plot_target_rate_by_numeric(df, target, show=False):
     # 厳密値TEが効いた構造を確認するため、値の種類（ユニーク値）が少ない列は値そのまま、値の種類（ユニーク値）が多い列は分位ビンで購入率を見る
     y = (df[target] == "Yes").astype(int)
@@ -183,6 +193,7 @@ def plot_target_rate_by_numeric(df, target, show=False):
     save("08_target_rate_by_numeric.png", show)
 
 
+# train と test の分布を重ねて比べる
 def plot_train_test_distribution(tr, te, show=False):
     cols = NUM_COLS + CAT_COLS
     n_rows, n_cols = grid(len(cols))
@@ -204,6 +215,7 @@ def plot_train_test_distribution(tr, te, show=False):
     save("09_train_test_distribution.png", show)
 
 
+# EDA の図をすべて作って保存する
 def main():
     plot_target_distribution(train, TARGET)
     plot_categorical_histograms(train, TARGET)

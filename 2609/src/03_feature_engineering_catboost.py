@@ -55,6 +55,7 @@ HIGHCARD_NUM_COLS = ["Annual_Income_USD", "Daily_Commute_km"]
 # 1. Arithmetic features
 # ---------------------------------------------------------------------------
 
+# 【不採用】数値列の四則演算の列を追加する
 def add_arithmetic(df: pd.DataFrame) -> list[str]:
     """Add meaningful arithmetic (diff/ratio/sum/avg) features in place.
 
@@ -62,6 +63,7 @@ def add_arithmetic(df: pd.DataFrame) -> list[str]:
     """
     new: list[str] = []
 
+    # 列を追加し、作った列名を記録する
     def put(name: str, values) -> None:
         df[name] = values
         new.append(name)
@@ -118,6 +120,7 @@ INTERACTION_PAIRS = [
 ]
 
 
+# 【不採用】2 列を連結した交互作用の列を追加する
 def add_interactions(
     df: pd.DataFrame, pairs: list[tuple[str, str]] | None = None
 ) -> list[str]:
@@ -138,6 +141,7 @@ def add_interactions(
 DIGIT_KS = list(range(-4, 4))  # 10^-4 .. 10^3
 
 
+# 数値列を桁ごとの列(digit features)にばらして追加する
 def add_digits(
     df: pd.DataFrame, cols: list[str] | None = None, ks: list[int] | None = None
 ) -> list[str]:
@@ -160,6 +164,7 @@ def add_digits(
     return new
 
 
+# すべてのフレームで値が一定の列を落とし、残った列名を返す
 def drop_constant(frames: list[pd.DataFrame], cols: list[str]) -> list[str]:
     """Drop columns that are constant across all given frames. Returns kept."""
     kept: list[str] = []
@@ -184,6 +189,7 @@ SMOOTH_KEY_SPECS = [
 ]
 
 
+# 年収・通勤距離を粗く丸めたキー(Smooth Keys)を追加する
 def add_smooth_keys(df: pd.DataFrame) -> list[str]:
     """Add coarse floor(x / scale) keys used as *additional* TE keys."""
     new: list[str] = []
@@ -198,6 +204,7 @@ def add_smooth_keys(df: pd.DataFrame) -> list[str]:
 # 3. Count / Frequency encoding (unsupervised -> no leak, fit on train+test)
 # ---------------------------------------------------------------------------
 
+# 【不採用】値ごとの出現回数の列を追加する
 def add_count_encoding(
     train: pd.DataFrame, test: pd.DataFrame, cols: list[str], freq: bool = False
 ) -> list[str]:
@@ -223,6 +230,7 @@ def add_count_encoding(
 # 4. Target Encoding (fold-internal, leak free)
 # ---------------------------------------------------------------------------
 
+# キーごとの購入者数と行数を集計する
 def _te_agg(keys: pd.Series, y: np.ndarray) -> pd.DataFrame:
     """sum / count of the target per key (smoothing-independent part)."""
     return pd.DataFrame({"k": keys.to_numpy(), "y": y}).groupby("k")["y"].agg(
@@ -230,16 +238,19 @@ def _te_agg(keys: pd.Series, y: np.ndarray) -> pd.DataFrame:
     )
 
 
+# 集計から平滑化した購入率の対応表を作る
 def _te_mapping(keys: pd.Series, y: np.ndarray, prior: float, smooth: float) -> pd.Series:
     """Smoothed target mean per key."""
     agg = _te_agg(keys, y)
     return (agg["sum"] + prior * smooth) / (agg["count"] + smooth)
 
 
+# 平滑化の強さを列名用の文字列にする
 def _smooth_tag(smooth: float) -> str:
     return f"{smooth:g}".replace(".", "p")
 
 
+# fold 内で Out-of-Fold の Target Encoding を作って追加する
 def target_encode(
     tr: pd.DataFrame,
     va: pd.DataFrame,
@@ -308,6 +319,7 @@ def target_encode(
 # 5. CatBoost-specific: cast low cardinality numerics to string categories
 # ---------------------------------------------------------------------------
 
+# 列を文字列にして cat_features に渡せる形にする(catify)
 def cast_to_str(frames: list[pd.DataFrame], cols: list[str]) -> None:
     """Cast columns to string so they can be passed as cat_features."""
     for frame in frames:
@@ -318,6 +330,7 @@ def cast_to_str(frames: list[pd.DataFrame], cols: list[str]) -> None:
 # ---------------------------------------------------------------------------
 # 重複している列(同じ情報を形だけ変えて持っている列)の一覧
 # ---------------------------------------------------------------------------
+# 他の列と同じ情報しか持たない列の名前を返す(--dedup)
 def dedup_columns() -> list[str]:
     """他の列と同じ情報しか持たない列の名前を返す(--dedup で学習から外す)。
 
@@ -334,6 +347,7 @@ def dedup_columns() -> list[str]:
     return te_dups + sk_dups
 
 
+# エンコーディングを絞るときに外す列の名前を返す(--lean)
 def lean_columns() -> list[str]:
     """エンコーディングを絞るときに外す列(--lean。dedup_columns() の後に適用する)。
 

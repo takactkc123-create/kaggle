@@ -38,6 +38,7 @@ DIGIT_COLS = ["Annual_Income_USD", "Daily_Commute_km"]
 BIN_CONFIG = {"Annual_Income_USD": [400, 600, 800, 900, 1100]}
 
 
+# RealMLP 用の特徴量(カテゴリ化・Smooth Keys・ビン・組み合わせキーなど)を作る
 def build_features(
     df: pd.DataFrame,
     cat_cols: list[str],
@@ -212,6 +213,7 @@ SMOOTH_KEY_SCALES_TE = (10, 100, 1000)
 EXACT_TE_SMOOTHS = ("auto", 10.0, 100.0)
 
 
+# 【不採用】厳密値 Target Encoding 用のキー 5 本のフレームを作る
 def build_te_key_frame(df: pd.DataFrame) -> pd.DataFrame:
     """厳密値2列 + income の Smooth Keys(/10,/100,/1000) = 5キーのフレームを返す.
 
@@ -228,12 +230,14 @@ def build_te_key_frame(df: pd.DataFrame) -> pd.DataFrame:
     return keys
 
 
+# キーごとの購入者数と行数を集計する
 def _te_agg(arr, y):
     return pd.DataFrame({"k": arr, "y": y}).groupby("k", observed=True)["y"].agg(
         ["sum", "count"]
     )
 
 
+# 集計から平滑化した購入率の対応表を作る
 def _te_map(agg, prior, smooth):
     cnt = agg["count"].to_numpy(dtype="float64")
     s = agg["sum"].to_numpy(dtype="float64")
@@ -245,6 +249,7 @@ def _te_map(agg, prior, smooth):
     return pd.Series((s + prior * m) / (cnt + m), index=agg.index)
 
 
+# 平滑化の強さを列名用の文字列にする
 def _smooth_tag(sm):
     if isinstance(sm, str):
         return sm
@@ -252,6 +257,7 @@ def _smooth_tag(sm):
     return str(int(f)) if f == int(f) else str(f).replace(".", "p")
 
 
+# 【不採用】値の種類が多い列の Out-of-Fold Target Encoding を作る
 def target_encode_highcard(
     keys_fit: pd.DataFrame,
     y_fit,
@@ -306,6 +312,7 @@ def target_encode_highcard(
     return te_fit, te_others
 
 
+# 元データを読み込み、目的変数を 0/1 にして返す(なければ None)
 def load_orig(path: str) -> pd.DataFrame | None:
     """元データを読み込み target を 0/1 化して返す。無ければ None。"""
     import os

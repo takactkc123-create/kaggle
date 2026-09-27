@@ -120,6 +120,7 @@ SPACE = {
 OOF_RE = re.compile(r"OOF[_ ]AUC[:=]\s*([0-9.]+)")
 
 
+# 探索する試行(試行名と上書きする引数)の一覧を作る
 def build_trials(model, only=None):
     trials = []
     for axis, items in SPACE[model].items():
@@ -130,6 +131,7 @@ def build_trials(model, only=None):
     return trials
 
 
+# 成果物を本番と別名で保存させる引数を返す
 def tag_args(model, tag):
     """成果物を本番と別名で保存させる引数。CatBoost は保存しない(本番を上書きするため)。"""
     if model == "lgbm":
@@ -139,6 +141,7 @@ def tag_args(model, tag):
     return ["--tag", tag]
 
 
+# 試行の一覧と所要時間の見積もりを表示する
 def estimate(model, trials):
     per = RUNTIME[model]
     total = per * len(trials)
@@ -153,6 +156,7 @@ def estimate(model, trials):
     print("※ 判定は実行後に: uv run src/07_compare_predictions.py <baseline> <tag>")
 
 
+# 1 試行の結果を docs/hyperparameter_tuning_results.csv に追記する
 def append_result(row):
     new = not os.path.exists(RESULTS)
     with open(RESULTS, "a", newline="", encoding="utf-8") as f:
@@ -162,6 +166,7 @@ def append_result(row):
         w.writerow(row)
 
 
+# 試行を 1 本ずつ 04 に渡して実行し、結果を記録する
 def run(model, trials):
     print(f"{len(trials)} 本を順番に実行する。結果は {RESULTS} に追記。\n")
     for i, (axis, tag, extra) in enumerate(trials, 1):
@@ -181,6 +186,7 @@ def run(model, trials):
     print(f"\n完了。次は DeLong 検定で判定する:\n  uv run src/07_compare_predictions.py {model} --all")
 
 
+# 記録済みの結果を、基準との差の大きい順に表示する
 def report():
     if not os.path.exists(RESULTS):
         print(f"{RESULTS} がまだありません(未実行)。")
@@ -190,6 +196,7 @@ def report():
     print(df.sort_values("基準との差", ascending=False).to_string(index=False))
 
 
+# 引数に応じて見積もり・実行・結果の表示を行う
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("model", nargs="?", choices=list(SPACE), help="探索するモデル")

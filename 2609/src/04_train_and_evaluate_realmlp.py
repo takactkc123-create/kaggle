@@ -54,6 +54,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ORIG_PATH = os.path.join(ROOT, "data", "EV_Adoption_and_Range_Anxiety_Dataset.csv")
 
 
+# 乱数のシードを Python・NumPy・PyTorch でそろえる
 def seed_everything(seed: int):
     np.random.seed(seed)
     random.seed(seed)
@@ -66,6 +67,7 @@ def seed_everything(seed: int):
 class NumericalPreprocessor(BaseEstimator, TransformerMixin):
     """median_center → robust_scale → smooth_clip (RealMLP-TD 標準の数値前処理)."""
 
+    # 数値列の前処理の種類を受け取る
     def __init__(self, tfms):
         self._tfms = [
             t
@@ -73,6 +75,7 @@ class NumericalPreprocessor(BaseEstimator, TransformerMixin):
             if t in ("median_center", "robust_scale", "smooth_clip", "l2_normalize")
         ]
 
+    # 数値列の前処理(中央値・尺度)を学習行で求める
     def fit(self, X: np.ndarray, y=None):
         if "median_center" in self._tfms or "robust_scale" in self._tfms:
             self._median = np.median(X, axis=0)
@@ -83,6 +86,7 @@ class NumericalPreprocessor(BaseEstimator, TransformerMixin):
             self._iqr_factors[q_diff == 0.0] = 0.0
         return self
 
+    # 求めた前処理を数値列に当てる
     def transform(self, X: np.ndarray, y=None) -> np.ndarray:
         X = X.copy().astype(np.float32)
         for tfm in self._tfms:
@@ -102,6 +106,7 @@ class NumericalPreprocessor(BaseEstimator, TransformerMixin):
 # Model components
 # ══════════════════════════════════════════════════════════════════════════════
 class CategoricalFeatureLayer(nn.Module):
+    # カテゴリ列ごとに embedding か one-hot を用意する
     def __init__(self, n_ens, cat_dims, embed_dim=8, onehot_thresh=8):
         super().__init__()
         self.n_ens = n_ens
@@ -117,6 +122,7 @@ class CategoricalFeatureLayer(nn.Module):
                 self.embed_layers.append(emb)
                 self._embed_feature_indices.append(i)
 
+    # カテゴリ列を embedding / one-hot にして横に並べる
     def forward(self, x):
         # x: (batch, n_ens, n_cat)
         batch_size, n_ens, _ = x.shape
@@ -142,10 +148,12 @@ class CategoricalFeatureLayer(nn.Module):
 
 
 class ScalingLayer(nn.Module):
+    # 列ごとの尺度パラメータを用意する
     def __init__(self, n_ens, n_features):
         super().__init__()
         self.scale = nn.Parameter(torch.ones(n_ens, n_features))
 
+    # 列ごとの尺度を掛ける
     def forward(self, x):
         return x * self.scale[None, :, :]
 
@@ -153,6 +161,7 @@ class ScalingLayer(nn.Module):
 class NTPLinear(nn.Module):
     """Neural Tangent Parametrization 風の線形層 (n_ens 並列)."""
 
+    # 内部アンサンブルの数だけ並列の線形層を用意する
     def __init__(self, n_ens, in_features, out_features, bias=True):
         super().__init__()
         self.in_features = in_features
@@ -161,6 +170,7 @@ class NTPLinear(nn.Module):
         self.bias = nn.Parameter(torch.randn(n_ens, out_features)) if bias else None
         self._scale = 1.0 / math.sqrt(in_features)
 
+    # 並列の線形層を一度に計算する
     def forward(self, x):
         # x: (batch, n_ens, in) -> (n_ens, batch, in) @ (n_ens, in, out)
         # CPU では einsum より bmm の方が速いため permute + bmm を使う (数式は同一)
@@ -171,6 +181,7 @@ class NTPLinear(nn.Module):
 
 
 class ResidualBlock(nn.Module):
+    # 残差ブロック(線形層・活性化・dropout)を用意する
     def __init__(self, n_ens, dim, dropout, activation=nn.SiLU):
         super().__init__()
         self.linear = NTPLinear(n_ens=n_ens, in_features=dim, out_features=dim)
@@ -178,6 +189,7 @@ class ResidualBlock(nn.Module):
         self.drop = nn.Dropout(dropout)
         self.res_scale = nn.Parameter(torch.ones(n_ens, dim) * 0.1)
 
+    # 残差ブロックを通し、入力を足して返す
     def forward(self, x):
         residual = x
         x = self.drop(self.act(self.linear(x)))
@@ -187,6 +199,7 @@ class ResidualBlock(nn.Module):
 class PBLDEmbedding(nn.Module):
     """Periodic Basis with Learned Decay embedding (数値列の周期埋め込み)."""
 
+    # 数値列の周期埋め込みのパラメータを用意する
     def __init__(self, n_ens, n_features, hidden_dim=16, out_dim=4,
                  freq_scale=0.1, activation=nn.GELU):
         super().__init__()
@@ -203,6 +216,7 @@ class PBLDEmbedding(nn.Module):
         self.act = activation()
         nn.init.uniform_(self.b1, -math.pi, math.pi)
 
+    # 数値列を周期関数で埋め込み、元の値と並べて返す
     def forward(self, x):
         periodic = torch.cos(
             2 * math.pi * (x.unsqueeze(-1) * self.w1.unsqueeze(0) + self.b1.unsqueeze(0))
@@ -215,6 +229,7 @@ class PBLDEmbedding(nn.Module):
 
 
 class RealMLP(nn.Module):
+    # RealMLP の各層(埋め込み・残差ブロック・出力層)を組み立てる
     def __init__(self, output_dim, cat_dims, n_numerical, cfg):
         super().__init__()
         n_ens = cfg["n_ens"]
@@ -258,6 +273,7 @@ class RealMLP(nn.Module):
             if self.output_layer.bias is not None:
                 self.output_layer.bias.zero_()
 
+    # 数値列とカテゴリ列から予測の logit を出す
     def forward(self, x_num, x_cat):
         x_num = x_num.unsqueeze(1).expand(-1, self.n_ens, -1)
         x_cat = x_cat.unsqueeze(1).expand(-1, self.n_ens, -1)
@@ -268,6 +284,7 @@ class RealMLP(nn.Module):
 # ══════════════════════════════════════════════════════════════════════════════
 # Schedules / param groups / loss
 # ══════════════════════════════════════════════════════════════════════════════
+# 学習の進み具合に応じた学習率などの値を返す
 def apply_schedule(init_value, progress, sched, flat_ratio=0.3):
     if sched == "constant":
         return init_value
@@ -290,6 +307,7 @@ def apply_schedule(init_value, progress, sched, flat_ratio=0.3):
     raise ValueError(f"Unknown schedule: '{sched}'")
 
 
+# パラメータを種類ごとに分け、学習率などを割り当てる
 def get_parameter_groups(model, p):
     first_linear_weight_id = id(model.first_linear.weight)
     scale_p, pbld_p, first_w_p, other_w_p, bias_p = [], [], [], [], []
@@ -314,6 +332,7 @@ def get_parameter_groups(model, p):
     ]
 
 
+# ラベル平滑化つきの二値交差エントロピーを計算する
 def binary_bce_loss(y_true, logits, ls=0.0, pos_weight=None):
     if ls > 0.0:
         y_true = y_true * (1.0 - ls) + 0.5 * ls
@@ -329,9 +348,11 @@ def binary_bce_loss(y_true, logits, ls=0.0, pos_weight=None):
 # sklearn-like wrapper
 # ══════════════════════════════════════════════════════════════════════════════
 class RealMLP_TD_Classifier(BaseEstimator):
+    # 設定を受け取る
     def __init__(self, cfg):
         self.params = cfg
 
+    # 前処理と学習を行い、検証行の予測を best_val_probs_ に残す
     def fit(self, X_train, y_train, X_val, y_val, cat_col_names=None):
         p = self.params
         dev = torch.device(p["device"])
@@ -487,6 +508,7 @@ class RealMLP_TD_Classifier(BaseEstimator):
             print(f"  -> best score: {best_score:.5f} (epoch {best_epoch})", flush=True)
         return self
 
+    # 購入する確率を予測する
     def predict_proba_pos(self, X: pd.DataFrame) -> np.ndarray:
         eval_bs = self.params["eval_bs"]
         X_num = self.preprocessor_.transform(X[self.num_col_names_].values.astype(np.float32))
@@ -507,6 +529,7 @@ class RealMLP_TD_Classifier(BaseEstimator):
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIG (yekenot 公開実装と同一)
 # ══════════════════════════════════════════════════════════════════════════════
+# RealMLP の設定を既定値から作り、指定分だけ上書きする
 def make_config(**over):
     cfg = {
         # --- architecture ---
@@ -542,6 +565,7 @@ def make_config(**over):
 # ══════════════════════════════════════════════════════════════════════════════
 # Main
 # ══════════════════════════════════════════════════════════════════════════════
+# RealMLP を 5-fold で学習・評価し、成果物を保存する
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--folds", type=int, default=5, help="実際に回す fold 数 (分割は常に5)")

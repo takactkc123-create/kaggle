@@ -26,6 +26,7 @@ from sklearn.metrics import roc_auc_score
 SEARCH_DIRS = ["oof", "experiments_rejected", "experiments_rejected/digit_ab", "backup_20260918/oof"]
 
 
+# 同順位を平均順位として扱う順位(midrank)を求める
 def _midrank(x):
     """同順位を平均順位で扱う midrank。DeLong の分散計算に必要。"""
     order = np.argsort(x)
@@ -44,6 +45,7 @@ def _midrank(x):
     return out
 
 
+# 複数の予測の AUC と、その共分散行列を求める
 def delong_cov(preds, y):
     """複数の予測について AUC と、その共分散行列を返す。
 
@@ -65,6 +67,7 @@ def delong_cov(preds, y):
     return aucs, np.atleast_2d(cov)
 
 
+# 2 つの予測の AUC の差・標準誤差・z 値・p 値を返す
 def paired_test(y, p_base, p_new):
     """AUC の差・標準誤差・z 値・両側 p 値を返す。"""
     aucs, cov = delong_cov(np.vstack([p_base, p_new]), y)
@@ -76,6 +79,7 @@ def paired_test(y, p_base, p_new):
     return aucs[0], aucs[1], diff, se, z, p
 
 
+# 名前またはパスから予測ファイル(.npy)のパスを引く
 def resolve(name):
     """名前またはファイルパスから .npy のパスを引く。"""
     if name.endswith(".npy") and os.path.exists(name):
@@ -88,6 +92,7 @@ def resolve(name):
     raise SystemExit(f"見つかりません: {name}")
 
 
+# 基準と比較対象の予測を読み、DeLong 検定の結果を表示する
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("base", help="比較の基準となる OOF の名前")

@@ -62,6 +62,7 @@ ALL_COLS = NUMERIC_COLS + CATEGORICAL_COLS
 # ==========================================================================
 # 0. データ読み込み (baseline_*.py と同一フロー)
 # ==========================================================================
+# train.csv と test.csv を読み込む
 def load_data(data_dir: str = "data"):
     """data/train.csv と data/test.csv を読む (02_baseline_*.py と同じフロー)."""
     train = pd.read_csv(f"{data_dir}/train.csv")
@@ -69,6 +70,7 @@ def load_data(data_dir: str = "data"):
     return train, test
 
 
+# 目的変数を 0/1 の配列にする
 def get_y(train: pd.DataFrame) -> np.ndarray:
     """目的変数を 0/1 の ndarray にする."""
     return (train[TARGET] == "Yes").astype(int).to_numpy()
@@ -79,6 +81,7 @@ def get_y(train: pd.DataFrame) -> np.ndarray:
 #    出典: fe_xgb.as_native_category / as_ordinal / as_onehot
 #    実測: 3方式とも単体では同点 (±0.0001)。多様性用に散らす軸として使う。
 # ==========================================================================
+# カテゴリ列を train・test 共通の水準で category 型にする
 def as_native_category(tr, te, cols=None):
     """train/test 共通のカテゴリ集合で category dtype 化 (LightGBM / XGB enable_categorical)."""
     cols = CATEGORICAL_COLS if cols is None else cols
@@ -90,6 +93,7 @@ def as_native_category(tr, te, cols=None):
     return tr, te
 
 
+# カテゴリ列を整数コードにする
 def as_ordinal(tr, te, cols=None):
     """整数コード化 (XGBoost の最終採用方式)."""
     cols = CATEGORICAL_COLS if cols is None else cols
@@ -101,6 +105,7 @@ def as_ordinal(tr, te, cols=None):
     return tr, te
 
 
+# 列を文字列にする(CatBoost の cat_features 用)
 def as_str(frames, cols) -> None:
     """文字列化 (CatBoost cat_features / catify 用). in-place."""
     for f in frames:
@@ -116,6 +121,7 @@ def as_str(frames, cols) -> None:
 #          (fe_lgbm 版) を採る。さらに小数1桁を ×10 して整数化し float 等価判定の
 #          揺れを完全に排除している (fe_lgbm 版は float のまま groupby)。
 # ==========================================================================
+# 13 列すべてを値のまま整数キーにしたフレームを作る
 def make_key_frame(train: pd.DataFrame, test: pd.DataFrame):
     """13列すべてを「厳密値のまま」整数キー化したフレームを返す (S6E8 のブレークスルー)."""
     keys_tr = pd.DataFrame(index=train.index)
@@ -143,6 +149,7 @@ def make_key_frame(train: pd.DataFrame, test: pd.DataFrame):
 SMOOTH_KEY_SCALES = (10, 100, 1000, 10000)
 
 
+# 年収・通勤距離を粗く丸めたキー(Smooth Keys)を追加する
 def add_smooth_keys(keys: pd.DataFrame, df: pd.DataFrame, scales=SMOOTH_KEY_SCALES,
                     commute: bool = True) -> pd.DataFrame:
     """年収・通勤距離を粗く丸めたキーを keys に追加して返す."""
@@ -156,6 +163,7 @@ def add_smooth_keys(keys: pd.DataFrame, df: pd.DataFrame, scales=SMOOTH_KEY_SCAL
     return keys
 
 
+# add_smooth_keys が作るキー名の一覧を返す
 def smooth_key_names(scales=SMOOTH_KEY_SCALES, commute: bool = True):
     """add_smooth_keys が作るキー名の一覧を返す."""
     out = [f"sk_inc{s}" for s in scales]
@@ -173,6 +181,7 @@ def smooth_key_names(scales=SMOOTH_KEY_SCALES, commute: bool = True):
 DIGIT_KS = list(range(-4, 4))
 
 
+# 数値列を桁ごとの列(digit features)にばらす
 def add_digit_features(df: pd.DataFrame, cols=None, ks=None) -> pd.DataFrame:
     """数値列を桁ごとにばらした int8 列を作る ((x // 10**k) % 10)."""
     cols = NUMERIC_COLS if cols is None else cols
@@ -186,6 +195,7 @@ def add_digit_features(df: pd.DataFrame, cols=None, ks=None) -> pd.DataFrame:
     return pd.DataFrame(out, index=df.index)
 
 
+# すべてのフレームで値が一定の列を落とし、残った列名を返す
 def drop_constant_cols(frames, cols):
     """全フレームで定数の列を落とす (学習を遅くするだけなので)。残った列名を返す."""
     kept = []
@@ -207,6 +217,7 @@ def drop_constant_cols(frames, cols):
 #          (= test の頻度情報を捨てている)。
 #    実測: LGBM +0.00083 / XGB +0.00049 / CatBoost -0.00017(無効) / RealMLP 未検証。
 # ==========================================================================
+# キーの値ごとの出現回数を列にする(train と test をまとめて数える)
 def count_encode(keys_tr: pd.DataFrame, keys_te: pd.DataFrame, cols, freq: bool = True):
     """出現頻度を列にする. 目的変数を使わないので train+test でまとめて数える."""
     out_tr = pd.DataFrame(index=keys_tr.index)
@@ -233,12 +244,14 @@ def count_encode(keys_tr: pd.DataFrame, keys_te: pd.DataFrame, cols, freq: bool 
 #          採用 (Triple TE の追加コストがほぼゼロになる)。
 #    Triple TE = smooth を auto/10/100 の3系統「同時投入」 (選ぶのではない)。
 # ==========================================================================
+# キーごとの購入者数と行数を集計する
 def _te_agg(arr, y):
     return pd.DataFrame({"k": arr, "y": y}).groupby("k", observed=True)["y"].agg(
         ["sum", "count"]
     )
 
 
+# 集計から平滑化した購入率の対応表を作る
 def _te_map(agg, prior, smooth):
     cnt = agg["count"].to_numpy(dtype="float64")
     s = agg["sum"].to_numpy(dtype="float64")
@@ -250,6 +263,7 @@ def _te_map(agg, prior, smooth):
     return pd.Series((s + prior * m) / (cnt + m), index=agg.index)
 
 
+# 平滑化の強さを列名用の文字列にする
 def _smooth_tag(sm):
     if isinstance(sm, str):
         return sm
@@ -257,6 +271,7 @@ def _smooth_tag(sm):
     return str(int(f)) if f == int(f) else str(f).replace(".", "p")
 
 
+# fold 内で Out-of-Fold の Target Encoding を作る
 def target_encode_fold(keys_fit: pd.DataFrame, y_fit, other_frames, cols,
                        smooths=(20.0,), n_inner: int = 5, seed: int = 42):
     """リークフリー TE。戻り値 (te_fit, [te_other, ...])。
@@ -309,6 +324,7 @@ def target_encode_fold(keys_fit: pd.DataFrame, y_fit, other_frames, cols,
 #    CatBoost では cat_features として渡す。RealMLP は build_features 内の
 #    `{col}_cat_` (floor 値の factorize) が実質これに相当し**適用済み**。
 # ==========================================================================
+# 値の種類が少ない数値列をカテゴリとして扱える形にする
 def catify(tr: pd.DataFrame, te: pd.DataFrame, cols=None, mode: str = "category"):
     """値の種類（ユニーク値）が少ない数値列をカテゴリ扱いに変換した (tr, te) を返す."""
     cols = LOWCARD_NUM_COLS if cols is None else cols
@@ -336,6 +352,7 @@ def catify(tr: pd.DataFrame, te: pd.DataFrame, cols=None, mode: str = "category"
 #    - 行フィンガープリント        : train 全行ユニークで原理的に機能しない
 #    - 元データ concat / buy_score : 実測 -0.00002
 # ==========================================================================
+# 【不採用】意味で選んだ数値列の四則演算の列を作る
 def arithmetic_meaningful(df: pd.DataFrame) -> pd.DataFrame:
     """【打ち止め】意味ベースの四則演算。再検証不要 (LGBM -0.00014 / CatBoost -0.00099)."""
     out = pd.DataFrame(index=df.index)
@@ -352,6 +369,7 @@ def arithmetic_meaningful(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+# 【不採用】2 列を連結した交互作用のキーを作る
 def interaction_keys(tr, te, pairs):
     """【打ち止め】2列連結キー。TE/Count いずれも全滅。"""
     ktr, kte = pd.DataFrame(index=tr.index), pd.DataFrame(index=te.index)
@@ -362,6 +380,7 @@ def interaction_keys(tr, te, pairs):
     return ktr, kte
 
 
+# 【不採用】カテゴリ列の 2 列の組をすべて列挙する
 def cat_pairs(cols=None):
     """【打ち止め】カテゴリ列の2列ペアを列挙する (交互作用TE用)."""
     cols = CATEGORICAL_COLS if cols is None else cols
@@ -377,6 +396,7 @@ def cat_pairs(cols=None):
 NEIGHBOR_RADII = (10, 50, 250, 1000)   # 窓に入る行数は中央値で約 400 / 1,300 / 4,600 / 16,000 行
 
 
+# 年収の各値について、前後の窓に入る購入者数と行数を数える
 def _window_stats(fit_values, fit_y, query_values, radius):
     """query の各値について、fit 側の3つの窓の (購入者数, 件数) を返す。
 
@@ -395,12 +415,14 @@ def _window_stats(fit_values, fit_y, query_values, radius):
     mid_hi = np.searchsorted(sorted_values, q, side="right")
     hi = np.searchsorted(sorted_values, q + radius, side="right")
 
+    # 累積和から、区間の購入者数と行数を取り出す
     def count(a, b):
         return cum_pos[b] - cum_pos[a], (b - a).astype(np.float64)
 
     return {"center": count(lo, hi), "left": count(lo, mid_lo), "right": count(mid_hi, hi)}
 
 
+# 半径ごとの近傍の購入率・傾き・曲率の列を作る
 def _neighborhood_frame(fit_values, fit_y, query_values, radii, smooth, prior, with_slope):
     """1組の (fit, query) について、半径ごとの購入率・傾き・曲率の列を作る。"""
     columns = {}
@@ -414,6 +436,7 @@ def _neighborhood_frame(fit_values, fit_y, query_values, radii, smooth, prior, w
     return pd.DataFrame(columns).astype("float32")
 
 
+# 【不採用】年収の近傍統計をリークなく作る
 def add_income_neighborhood(fit_income, fit_y, other_incomes, radii=NEIGHBOR_RADII,
                             smooth=10.0, with_slope=True, n_inner=5, seed=42):
     """年収の近傍統計を、target_encode_fold と同じ作法でリークなく作る。

@@ -32,6 +32,7 @@ y = (train[target] == "Yes").astype(int)
 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
 
+# 5-fold で学習し、OOF 予測と test 予測(fold 平均)を返す
 def run_cv(feature_cols, cat_cols):
     """5-fold で学習し、OOF 予測と test 予測(fold 平均)を返す。"""
     X, X_test = train[feature_cols], test[feature_cols]
