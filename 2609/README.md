@@ -3,7 +3,7 @@
 EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二値分類コンペ。評価指標は **ROC-AUC**。
 
 - コンペ: https://www.kaggle.com/competitions/playground-series-s6e9
-- **最良スコア: CV 0.946245(最終提出 D)/ Public LB 0.94645(元の構成)**
+- **最良スコア: CV 0.946264(最終提出)/ Public LB 0.94645(元の構成)**
 - 順位は **320位 / 2,732チーム(上位11.7%)** — **2026-09-23 時点の暫定値**。締切は 2026-09-30
   (上位15%のラインは 409位。参加チームが増え続けるため、**スコアが同じでも順位は日々下がる**)
 - 方針・ルール: [CLAUDE.md](CLAUDE.md)
@@ -26,7 +26,7 @@ uv run kaggle datasets download -d itzzomkar/ev-adoption-behavior-and-range-anxi
 - 2 つ目は**元データ**(`data/EV_Adoption_and_Range_Anxiety_Dataset.csv`、1 万行)。コンペのデータはこれを元に Kaggle が生成したもので、
   コンペの Data ページで使用が認められている(CC0)。
 - 元データは学習には使わない。RealMLP の特徴量 1 列(年収ごとの元データでの購入率)を作るためだけに使う。
-  **ないとエラーにならずにこの列が抜け(38 列 → 37 列)、スコアが本番と一致しない**ので、必ず取得すること。
+  **ないとエラーにならずにこの列が抜け(39 列 → 38 列)、スコアが本番と一致しない**ので、必ず取得すること。
 - 取得後は「[現行ベストの再現コマンド](#現行ベストの再現コマンド)」で 4 モデルを学習(約 75 分)→ `uv run src/06_ensemble_hill_climbing.py` でアンサンブル。
 - ノートブックは、カーネルに `.venv` の Python を選べば動く。
 
@@ -62,8 +62,8 @@ uv run kaggle datasets download -d itzzomkar/ev-adoption-behavior-and-range-anxi
 | LightGBM | 0.94123 | **0.94611** | 46 |
 | XGBoost | 0.94124 | **0.94609** | 69 |
 | CatBoost | 0.94156 | 0.94592 | 43(アンサンブルの重みは 0) |
-| RealMLP | — | 0.94590 | 38 |
-| **アンサンブル**(LightGBM・XGBoost・RealMLP の順位平均) | — | **0.946245** | — |
+| RealMLP | — | 0.94603 | 39 |
+| **アンサンブル**(LightGBM・XGBoost・RealMLP の順位平均) | — | **0.946264** | — |
 
 ---
 
@@ -197,14 +197,14 @@ uv run src/04_train_and_evaluate_xgb.py --max-bin 1024 \
 uv run src/04_train_and_evaluate_catboost.py \
   --folds 5 --iters 1000 --lr 0.06 --fast --border 64 --hc-border 1024 --threads 7 --save
 
-uv run src/04_train_and_evaluate_realmlp.py --folds 5 --threads 7 --combo-home --tag realmlp   # epochs は 2 から変えないこと
+uv run src/04_train_and_evaluate_realmlp.py --folds 5 --threads 7 --combo-home --te-income --tag realmlp   # epochs は 2 から変えないこと
 ```
 
 | モデル | OOF AUC | 備考 |
 |---|---|---|
 | **LightGBM** | **0.94610** | アンサンブル採用 |
 | **XGBoost** | **0.94609** | アンサンブル採用 |
-| **RealMLP** | **0.94590** | アンサンブル採用。GBDTとの相関が低く多様性を供給 |
+| **RealMLP** | **0.94603** | アンサンブル採用。GBDTとの相関が低く多様性を供給 |
 | CatBoost | 0.94592 | 現在アンサンブルの重みは 0 |
 
 > **重いジョブは1つずつ実行すること**(8コア環境)。CatBoost と RealMLP を並列で走らせると
@@ -227,7 +227,8 @@ hill climbing で足し合わせる。選ばれた回数がそのまま重みに
 
 | 提出 | CV | Public LB |
 |---|---|---|
-| **D**(現在のコード。LightGBM・RealMLP に自宅充電 × 自宅スタンド数を追加) | **0.946245** | 0.94640 |
+| **現在の構成**(D + RealMLP に年収の Target Encoding を train だけで追加。2026-09-28) | **0.946264** | 0.94642 |
+| (参考)D(置き換え前。LightGBM・RealMLP に自宅充電 × 自宅スタンド数を追加。タグ `best-20260927-d`) | 0.946245 | 0.94640 |
 | 元の構成(タグ `final-original-20260927`) | 0.946234 | **0.94645** |
 (**320位 / 2,732チーム**、2026-09-23 時点の暫定値)
 
@@ -274,7 +275,7 @@ z=+8.48 で誤差でないことが確定した。
 uv run src/04_train_and_evaluate_lgbm.py --dump-features --tag lgbm
 uv run src/04_train_and_evaluate_xgb.py --dump-features --out-suffix ""
 uv run src/04_train_and_evaluate_catboost.py --fast --dump-features --tag catboost
-uv run src/04_train_and_evaluate_realmlp.py --combo-home --dump-features --tag realmlp
+uv run src/04_train_and_evaluate_realmlp.py --combo-home --te-income --dump-features --tag realmlp
 ```
 
 **Feature Engineering を変えたら再生成すること。** JSON は生成物だが `data/` を含めていないためクローン先では作り直せない。ノートブックの表示元になるのでリポジトリに含めている。

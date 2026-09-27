@@ -2,7 +2,7 @@
  "tag": "realmlp",
  "model": "RealMLP",
  "note": "no_orig=False combo_home=True",
- "n_features": 38,
+ "n_features": 39,
  "cat_features": [
   "Age_Range_Anxiety_Level_",
   "Age_cat_",
@@ -68,6 +68,7 @@
   "Home_Charging_Possible_Charging_Stations_Near_Home_",
   "_Annual_Income_USD_Range_Anxiety_Level_TE",
   "_Age_Range_Anxiety_Level_TE",
-  "_Home_Charging_Possible_Charging_Stations_Near_Home_TE"
+  "_Home_Charging_Possible_Charging_Stations_Near_Home_TE",
+  "_Annual_Income_USD_cat_TE"
  ]
 }

@@ -35,16 +35,18 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
    列サブサンプリング + 深さ制限(`colsample 0.3 + max_depth 5`)が見落としの是正として効いた。
 5. **09-21〜22**: Hyperparameter Tuning は 18 試行すべて誤差か悪化で打ち止め。Lookup Transformer は不採用。
 6. **09-23〜26**: EDA 由来の施策(列削減・補助金との組み合わせ・年収の近傍統計)はすべて不採用。
-7. **09-27**: 列の整理(`--dedup` / `--lean`)と交互作用1組を採用し、最終構成 D を決定(下記「現状」)。
+7. **09-27**: 列の整理(`--dedup` / `--lean`)と交互作用1組を採用し、最終構成 D を決定。
+8. **09-28**: `.py` を必要な列だけを作る形に整理(予測は完全一致)。補助金との組み合わせは全モデルで誤差。
+   RealMLP に年収の Target Encoding(train だけで作る)を足し、CV 最高 0.946264 に(下記「現状」)。
 
 **改善の内訳**: Feature Engineering +0.004 / 収束確認 +0.0008 / 列サブサンプリング +0.0002 / RealMLP 追加 +0.0005。
 パラメータ側で効いたのは「見落としの是正」2件だけ。
 
-## 現状(2026-09-27 時点)
+## 現状(2026-09-28 時点)
 
 | 項目 | 値 |
 |---|---|
-| 最終提出(2本) | **D**: CV 0.946245 / Public 0.94640(現在のコード)、**元の構成**: CV 0.946234 / Public **0.94645**(タグ `final-original-20260927`、成果物は `backup_final_original_20260927/`) |
+| 最終提出(2本) | **現在の構成**: CV 0.946264 / Public 0.94642(D + RealMLP の `--te-income`。2026-09-28)、**元の構成**: CV 0.946234 / Public **0.94645**(タグ `final-original-20260927`、成果物は `backup_final_original_20260927/`) |
 | 構成 | **LightGBM 1/3 + XGBoost 1/3 + RealMLP 1/3**(順位平均)。CatBoost は重み 0 |
 | 順位 | 320位 / 2,732チーム(上位11.7%。09-23 時点の暫定) |
 | LB 1位 | 0.94945(2位は 0.94672)。Public は test の 20% のみで算出 |
@@ -54,9 +56,11 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 | LightGBM | 0.94123 | **0.94611** | 46 | 重複・不要なエンコーディングを作らない、交互作用1組 |
 | XGBoost | 0.94124 | **0.94609** | 69 | 重複を作らない(エンコーディングを絞ると悪化傾向 z=-2.4〜-2.6 で不適用) |
 | CatBoost | 0.94156 | 0.94592 | 43 | 重複・不要なエンコーディングを作らない(重み 0) |
-| RealMLP | — | **0.94590** | 38 | `--combo-home`(交互作用) |
+| RealMLP | — | **0.94603** | 39 | `--combo-home`(交互作用)、`--te-income`(年収の Target Encoding を train だけで作る) |
 
 - 交互作用「自宅充電の可否 × 自宅スタンド数」は採用基準に届かないが、CV 最高のため D に採用した。
+- RealMLP の `--te-income` は単体 +0.000128(z=+6.84)で採用基準を満たし、アンサンブルは +0.000018(z=+3.06)。CV 最高のため採用(2026-09-28)。
+  D はタグ `best-20260927-d`、成果物は `backup_best_20260927_d/` に残してある。
 - 実行コマンドは README「現行ベストの再現コマンド」、**パラメータの正本は `src/05_hyperparameter_tuning.py` の `FIXED`**。
   `notebooks/04_train_and_evaluate.ipynb` は 4 モデルを本番と同じ設定で学習し、OOF の一致と `FIXED` との一致を確認する。
 

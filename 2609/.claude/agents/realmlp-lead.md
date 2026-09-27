@@ -23,7 +23,7 @@ model: sonnet
 
 ## 現状
 
-- OOF AUC **0.94590**(2エポック)。単体では LightGBM 0.94610 / XGBoost 0.94609 / CatBoost 0.94592 に次ぐ4位
+- OOF AUC **0.94603**(2エポック、`--combo-home --te-income`)。単体では LightGBM 0.94611 / XGBoost 0.94609 に次ぐ3位
 - 環境に **GPUはなく torch は CPU版のみ**。1エポック約290秒(7スレッド)、フル5-fold約50分
 
 ## 管轄ファイル
@@ -77,12 +77,12 @@ fold 分割が全モデル共通(`random_state=42`)なので共通ノイズが�
 **学習しないので 30 秒程度**で終わる(fold 1 の学習行列を組んだ直後に列名を書いて終了する)。
 
 ```bash
-uv run src/04_train_and_evaluate_realmlp.py --combo-home --dump-features --tag realmlp
+uv run src/04_train_and_evaluate_realmlp.py --combo-home --te-income --dump-features --tag realmlp
 ```
 
 この JSON は、`notebooks/03_feature_engineering.ipynb` で組み上げた列が本番と一致するかを確かめる基準になる。
 `data/` はリポジトリに含めていないため**クローン先では再生成できない**。
-更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **38 列**(`--combo-home` で組み合わせキーを1組足した後)。
+更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **39 列**(`--combo-home` で組み合わせキーを1組、`--te-income` で年収の Target Encoding を足した後)。
 
 併せて `src/feature_catalog.py` の **`FUNC_STATUS` も更新する**こと。
 `03_feature_engineering_realmlp.py` には**本番で使う関数だけ**を置く。検証して捨てた関数は、再検証しないための記録として
