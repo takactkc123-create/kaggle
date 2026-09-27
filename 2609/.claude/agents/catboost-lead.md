@@ -16,7 +16,7 @@ LightGBM(0.94610)・XGBoost(0.94609)と**同質**なため貪欲法に選ばれ�
 1. `CLAUDE.md` — 全体方針・データ特性・競争ルール・FE採否基準
 2. `Log.md` — これまでの実験ログと FE検証結果表(**効果なしと記録済みの施策は再検証しない**)
 3. `02_baseline_catboost.py` — ベースライン(OOF 0.94156)。**現行ベストは 0.94592**
-   (`te_all,catify,digits,skeys,te3` + `--dedup` + `--lean` + border 64 + hc-border 1024)
+   (catify + digit + Target Encoding(`fe.te_plan()`)+ border 64 + hc-border 1024)
 
 ## 管轄ファイル(他モデルのファイルは絶対に編集しない)
 
@@ -90,18 +90,18 @@ LightGBM(0.94610)・XGBoost(0.94609)と**同質**なため貪欲法に選ばれ�
 **学習しないので 30 秒程度**で終わる(fold 1 の学習行列を組んだ直後に列名を書いて終了する)。
 
 ```bash
-uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify,digits,skeys,te3 --dedup --lean --folds 5 \
-  --rows 15000 --fast --dump-features --tag catboost
+uv run src/04_train_and_evaluate_catboost.py --fast --dump-features --tag catboost
 ```
 
 この JSON は、`notebooks/03_feature_engineering.ipynb` で組み上げた列が本番と一致するかを確かめる基準になる。
 `data/` はリポジトリに含めていないため**クローン先では再生成できない**。
-更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **43 列**(`--dedup` で重複列を、`--lean` で不要なエンコーディングを外した後)。
+更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **43 列**(`fe.te_plan()` どおりに必要な列だけを作る)。
 
 併せて `src/feature_catalog.py` の **`FUNC_STATUS` も更新する**こと。
-`03_feature_engineering_catboost.py` は採用した関数だけを置く場所ではなく、**検証して捨てた施策も
-再検証しないための記録として残す**方針なので、どれが本番で生きているかは
-この表だけが知っている。`notebooks/03_feature_engineering.ipynb` の 7 章(採否表と本番の列の突き合わせ)はここを読む。不採用にしたら同ノートブック 9 章の表にも1行足すこと。
+`03_feature_engineering_catboost.py` には**本番で使う関数だけ**を置く。検証して捨てた関数は、再検証しないための記録として
+`03_feature_engineering_all.py` の「不採用(記録)」に、名前の末尾に `_catboost` を付けて移す(2026-09-28 から)。
+新しい施策は `04` に一時的な引数を足して試し、採用なら本番の構成(`te_plan()` など)に組み込み、不採用なら関数を移して引数を消す。
+どれが本番で生きているかは、この表が持つ。`notebooks/03_feature_engineering.ipynb` の 7 章(採否表と本番の列の突き合わせ)はここを読む。不採用にしたら同ノートブック 9 章の表にも1行足すこと。
 - 採用したら `("03_feature_engineering_catboost", "関数名"): (ADOPTED, "根拠")`
 - 捨てたら `(REJECTED, "なぜ捨てたか")` — 根拠は後の自分が再検証しないためのもの
 - `fd.verify_status()` が `docs/features_*.json` と突き合わせて矛盾を検出する

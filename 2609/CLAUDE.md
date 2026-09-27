@@ -51,9 +51,9 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 
 | モデル | ベースライン | 現在 | 列数 | 本番の設定 |
 |---|---|---|---|---|
-| LightGBM | 0.94123 | **0.94611** | 46 | `--dedup --lean`、交互作用 `te2home` |
-| XGBoost | 0.94124 | **0.94609** | 69 | `--dedup`(`--lean` は悪化傾向 z=-2.4〜-2.6 で不適用) |
-| CatBoost | 0.94156 | 0.94592 | 43 | `--dedup --lean`(重み 0) |
+| LightGBM | 0.94123 | **0.94611** | 46 | 重複・不要なエンコーディングを作らない、交互作用1組 |
+| XGBoost | 0.94124 | **0.94609** | 69 | 重複を作らない(エンコーディングを絞ると悪化傾向 z=-2.4〜-2.6 で不適用) |
+| CatBoost | 0.94156 | 0.94592 | 43 | 重複・不要なエンコーディングを作らない(重み 0) |
 | RealMLP | — | **0.94590** | 38 | `--combo-home`(交互作用) |
 
 - 交互作用「自宅充電の可否 × 自宅スタンド数」は採用基準に届かないが、CV 最高のため D に採用した。
@@ -89,8 +89,9 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 - 目的変数は `(train["Will_Buy_EV"] == "Yes").astype(int)`。`read_csv` までのフローは `02_baseline_*.py` と同一。
 - `04_*` に `--dump-features` を付けると、本番と同じコードパスで列名を `docs/features_<tag>.json` に書いて終了する。
   **Feature Engineering を変えたら必ず再生成すること**。
-- `03_*` には捨てた施策の関数も記録として残す。本番で生きているかは `src/feature_catalog.py` の **`FUNC_STATUS`**
-  (〇33 / ✖30 / 補助8)が持ち、**採否を変えたらこの表も更新する**。`verify_status()` が JSON と突き合わせて矛盾を検出する。
+- `03_<model>` には本番で使う関数だけを置き、作る列は各モデルの `te_plan()` などにまとめる。捨てた関数は
+  `03_feature_engineering_all.py` の「不採用(記録)」に、名前の末尾にモデル名を付けて移す。
+  採否は `src/feature_catalog.py` の **`FUNC_STATUS`**(〇33 / ✖32 / 補助8)が持ち、**採否を変えたらこの表も更新する**。`verify_status()` が JSON と突き合わせて矛盾を検出する。
 
 ## 採否基準(2026-09-20 から paired DeLong 検定)
 

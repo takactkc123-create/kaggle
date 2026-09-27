@@ -77,7 +77,7 @@ fold 分割が全モデル共通(`random_state=42`)なので共通ノイズが�
 **学習しないので 30 秒程度**で終わる(fold 1 の学習行列を組んだ直後に列名を書いて終了する)。
 
 ```bash
-uv run src/04_train_and_evaluate_realmlp.py --folds 1 --subsample 0.02 --dump-features --tag realmlp
+uv run src/04_train_and_evaluate_realmlp.py --combo-home --dump-features --tag realmlp
 ```
 
 この JSON は、`notebooks/03_feature_engineering.ipynb` で組み上げた列が本番と一致するかを確かめる基準になる。
@@ -85,9 +85,10 @@ uv run src/04_train_and_evaluate_realmlp.py --folds 1 --subsample 0.02 --dump-fe
 更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **38 列**(`--combo-home` で組み合わせキーを1組足した後)。
 
 併せて `src/feature_catalog.py` の **`FUNC_STATUS` も更新する**こと。
-`03_feature_engineering_realmlp.py` は採用した関数だけを置く場所ではなく、**検証して捨てた施策も
-再検証しないための記録として残す**方針なので、どれが本番で生きているかは
-この表だけが知っている。`notebooks/03_feature_engineering.ipynb` の 7 章(採否表と本番の列の突き合わせ)はここを読む。不採用にしたら同ノートブック 9 章の表にも1行足すこと。
+`03_feature_engineering_realmlp.py` には**本番で使う関数だけ**を置く。検証して捨てた関数は、再検証しないための記録として
+`03_feature_engineering_all.py` の「不採用(記録)」に、名前の末尾に `_realmlp` を付けて移す(2026-09-28 から)。
+新しい施策は `04` に一時的な引数を足して試し、採用なら本番の構成(`te_plan()` など)に組み込み、不採用なら関数を移して引数を消す。
+どれが本番で生きているかは、この表が持つ。`notebooks/03_feature_engineering.ipynb` の 7 章(採否表と本番の列の突き合わせ)はここを読む。不採用にしたら同ノートブック 9 章の表にも1行足すこと。
 - 採用したら `("03_feature_engineering_realmlp", "関数名"): (ADOPTED, "根拠")`
 - 捨てたら `(REJECTED, "なぜ捨てたか")` — 根拠は後の自分が再検証しないためのもの
 - `fd.verify_status()` が `docs/features_*.json` と突き合わせて矛盾を検出する

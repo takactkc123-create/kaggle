@@ -135,7 +135,7 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 - Count Encoding(LightGBM/XGBoost のみ。CatBoost では無効)
 - Triple Target Encoding(平滑化3種)+ Smooth Keys + digit features + ビン数1024(+0.0005〜0.001)
 - catify(値の種類（ユニーク値）が少ない数値のカテゴリ化)は **CatBoost 固有**(+0.0017)
-- 列の整理(±0。スコアは変わらないが列が減り、読みやすくなる): 他の列と同じ情報しか持たない列を外す(`--dedup`、GBDT 3種)、値の種類が少ない数値列のエンコーディングを Target Encoding だけに絞る(`--lean`、LightGBM・CatBoost)
+- 列の整理(±0。スコアは変わらないが列が減り、読みやすくなる): 他の列と同じ情報しか持たない列を作らない(GBDT 3種)、値の種類が少ない数値列のエンコーディングを Target Encoding だけに絞る(LightGBM・CatBoost)。どの列を作るかは各モデルの `te_plan()` にまとめてある
 - 交互作用 1 組「自宅充電の可否 × 自宅スタンド数」(LightGBM・RealMLP。+0.00001 で有意差はないが、CV 最高のため最終構成 D に採用)
 
 **効かなかったもの**: 四則演算、交互作用の Target Encoding(2〜13列。上の1組を除く)、行フィンガープリント、元データの行の追加。
@@ -186,15 +186,15 @@ uv run src/05_hyperparameter_tuning.py --report                 # これまで�
 ### 現行ベストの再現コマンド
 
 ```bash
-uv run src/04_train_and_evaluate_lgbm.py --patterns base,te1,cnt1,digit,sk,te2home --smooths auto,10,100 --dedup --lean \
+uv run src/04_train_and_evaluate_lgbm.py \
   --max_bin 1024 --feature_fraction 0.3 --max_depth 5 \
   --folds 5 --learning_rate 0.03 --n_estimators 8000 --early_stopping 200 --n_jobs 7 --save --tag lgbm
 
-uv run src/04_train_and_evaluate_xgb.py --pattern tte_sk_dig --dedup --max-bin 1024 \
+uv run src/04_train_and_evaluate_xgb.py --max-bin 1024 \
   --set-param colsample_bytree=0.3 --set-param max_depth=5 \
   --folds 5 --learning-rate 0.03 --n-estimators 8000 --early-stopping 200 --n-jobs 7 --save --out-suffix ""
 
-uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify,digits,skeys,te3 --dedup --lean \
+uv run src/04_train_and_evaluate_catboost.py \
   --folds 5 --iters 1000 --lr 0.06 --fast --border 64 --hc-border 1024 --threads 7 --save
 
 uv run src/04_train_and_evaluate_realmlp.py --folds 5 --threads 7 --combo-home --tag realmlp   # epochs は 2 から変えないこと
@@ -271,13 +271,10 @@ z=+8.48 で誤差でないことが確定した。
 `--dump-features` を付けると、**fold 1 の学習行列を組み上げた直後に列名を `docs/features_<tag>.json` へ書いて終了する**(学習しない)。本番と同じコードパスを通るので列の取りこぼしがない。`notebooks/03_feature_engineering.ipynb` は、ノートブックで組み上げた列がこの JSON と一致するかを確かめる。
 
 ```bash
-uv run src/04_train_and_evaluate_lgbm.py --patterns base,te1,cnt1,digit,sk,te2home --smooths auto,10,100 --dedup --lean \
-  --sample 0.02 --folds 1 --dump-features --tag lgbm
-uv run src/04_train_and_evaluate_xgb.py --pattern tte_sk_dig --dedup --sample 0.02 --folds 1 \
-  --dump-features --out-suffix ""
-uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify,digits,skeys,te3 --dedup --lean --folds 5 \
-  --rows 15000 --fast --dump-features --tag catboost
-uv run src/04_train_and_evaluate_realmlp.py --folds 1 --subsample 0.02 --dump-features --tag realmlp
+uv run src/04_train_and_evaluate_lgbm.py --dump-features --tag lgbm
+uv run src/04_train_and_evaluate_xgb.py --dump-features --out-suffix ""
+uv run src/04_train_and_evaluate_catboost.py --fast --dump-features --tag catboost
+uv run src/04_train_and_evaluate_realmlp.py --combo-home --dump-features --tag realmlp
 ```
 
 **Feature Engineering を変えたら再生成すること。** JSON は生成物だが `data/` を含めていないためクローン先では作り直せない。ノートブックの表示元になるのでリポジトリに含めている。
