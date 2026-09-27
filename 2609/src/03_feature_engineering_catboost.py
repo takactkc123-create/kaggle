@@ -313,3 +313,35 @@ def cast_to_str(frames: list[pd.DataFrame], cols: list[str]) -> None:
     for frame in frames:
         for col in cols:
             frame[col] = frame[col].astype(str)
+
+
+# ---------------------------------------------------------------------------
+# 重複している列(同じ情報を形だけ変えて持っている列)の一覧
+# ---------------------------------------------------------------------------
+def dedup_columns() -> list[str]:
+    """他の列と同じ情報しか持たない列の名前を返す(--dedup で学習から外す)。
+
+    - 値の種類（ユニーク値）が少ない11列の TE は、平滑化 10 / 20 / 100 の順位相関が 0.9999 以上になる
+      (1値あたり数万行あり、平滑化の強さが効かない)。20 だけ残し 10 / 100 を外す
+    - Smooth Key の sk_inc_1 = floor(年収) は、年収が整数なので年収そのものと同じキー。
+      その TE 3列は年収の TE と値まで同じ
+    - 値が 0〜9 に収まる列の 1 の位(保有台数・環境意識)は外さない。CatBoost では元の列を
+      catify でカテゴリにしているので、この2列が「数値として見る」唯一の列になっている
+    """
+    lowcard = CATEGORICAL_COLS + LOWCARD_NUM_COLS
+    te_dups = [f"te{s}_{c}" for c in lowcard for s in ("10", "100")]
+    sk_dups = [f"te{s}_sk_inc_1" for s in ("10", "20", "100")]
+    return te_dups + sk_dups
+
+
+def lean_columns() -> list[str]:
+    """エンコーディングを絞るときに外す列(--lean。dedup_columns() の後に適用する)。
+
+    LightGBM と同じ検証(2026-09-27)で、CatBoost でも外して悪化しなかった(単体 +0.000036, z=+1.97)。
+    - 値の種類（ユニーク値）が少ない数値列(年齢・スタンド数2列)の digit。保有台数・環境意識の 1 の位は、catify した列を
+      数値として見る唯一の列なので残す
+    - カテゴリ列の TE。CatBoost は cat_features の購入率を内部で自動計算している
+    """
+    digits = [f"{c}_d{k}" for c in ("Age", "Charging_Stations_Near_Home", "Charging_Stations_Near_Work")
+              for k in (0, 1)]
+    return digits + [f"te20_{c}" for c in CATEGORICAL_COLS]

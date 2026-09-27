@@ -1,7 +1,7 @@
 {
  "tag": "realmlp",
  "model": "RealMLP",
- "note": "exact_te=False digits=False no_orig=False",
+ "note": "exact_te=False digits=False no_orig=False ratio=False km5=False",
  "n_features": 38,
  "cat_features": [
   "Age_Range_Anxiety_Level_",
@@ -19,10 +19,10 @@
   "City_Type",
   "Current_Car_Type",
   "Daily_Commute_km_cat_",
-  "Daily_km_/_5_floor_",
   "Environmental_Concern_Level_cat_",
   "Gender",
   "Home_Charging_Possible",
+  "Home_Charging_Possible_Charging_Stations_Near_Home_",
   "Income_/_10000_floor_",
   "Income_/_1000_floor_",
   "Income_/_100_floor_",
@@ -44,11 +44,9 @@
   "Home_Charging_Possible",
   "Subsidy_Available",
   "Range_Anxiety_Level",
-  "_Daily_Commute_km_/_Age",
   "Income_/_100_floor_",
   "Income_/_1000_floor_",
   "Income_/_10000_floor_",
-  "Daily_km_/_5_floor_",
   "Age_cat_",
   "Annual_Income_USD_cat_",
   "Daily_Commute_km_cat_",
@@ -67,7 +65,9 @@
   "Annual_Income_USD_1100_quantile_bin_",
   "Annual_Income_USD_Range_Anxiety_Level_",
   "Age_Range_Anxiety_Level_",
+  "Home_Charging_Possible_Charging_Stations_Near_Home_",
   "_Annual_Income_USD_Range_Anxiety_Level_TE",
-  "_Age_Range_Anxiety_Level_TE"
+  "_Age_Range_Anxiety_Level_TE",
+  "_Home_Charging_Possible_Charging_Stations_Near_Home_TE"
  ]
 }

@@ -3,7 +3,7 @@
 EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二値分類コンペ。評価指標は **ROC-AUC**。
 
 - コンペ: https://www.kaggle.com/competitions/playground-series-s6e9
-- **最良スコア: CV 0.94623 / Public LB 0.94645**
+- **最良スコア: CV 0.946245(最終提出 D)/ Public LB 0.94645(元の構成)**
 - 順位は **320位 / 2,732チーム(上位11.7%)** — **2026-09-23 時点の暫定値**。締切は 2026-09-30
   (上位15%のラインは 409位。参加チームが増え続けるため、**スコアが同じでも順位は日々下がる**)
 - 方針・ルール: [CLAUDE.md](CLAUDE.md)
@@ -14,7 +14,7 @@ EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二�
 ![パイプライン全体像](docs/pipeline_overview.png)
 
 ```
-① EDA → ② Baseline → ③ FE定義 → ④ FE実行 → ⑤ HPO → ⑥ Ensemble → submit
+① EDA → ② Baseline → ③ FE定義 → ④ FE実行 → ⑤ Hyperparameter Tuning → ⑥ Ensemble → submit
                                       ↓                    ↓
                           Agents(担当制)          ⑦ 評価(DeLong検定)
 ```
@@ -27,7 +27,7 @@ EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二�
 | ② | Baseline | `src/02_baseline_<model>.py` | `submit/submission_<model>.csv` |
 | ③ | FE定義 | `src/03_feature_engineering_<model>.py` / `src/03_feature_engineering_all.py` | (関数のみ。実行しない) |
 | ④ | FE実行 | `src/04_train_and_evaluate_<model>.py` | `oof/` `submit/` `importance/` |
-| ⑤ | HPO | `src/05_hyperparameter_tuning.py` | `hyperparameter_tuning_results.csv` |
+| ⑤ | Hyperparameter Tuning | `src/05_hyperparameter_tuning.py` | `docs/hyperparameter_tuning_results.csv` |
 | ⑥ | Ensemble | `src/06_ensemble_hill_climbing.py` | `submit/submission_hillclimb.csv` |
 | ⑦ | 評価 | `src/07_compare_predictions.py` | 採否判定(paired DeLong 検定) |
 | — | 補助 | `src/feature_catalog.py` | 生成された列名を JSON に書き出す共通ヘルパー |
@@ -48,7 +48,7 @@ uv run src/01_eda.py
 | `01_target_distribution.png` | 目的変数の件数と比率 |
 | `02_categorical_hist.png` | カテゴリ6列の分布(Yes/No積み上げ) |
 | `03_numeric_hist.png` | 数値7列の分布 |
-| `04_numeric_log_hist.png` | 高カーディナリティ2列の対数分布 |
+| `04_numeric_log_hist.png` | 値の種類（ユニーク値）が多い2列の対数分布 |
 | `05_correlation_heatmap.png` | 数値列と目的変数の相関 |
 | `06_boxplots_by_target.png` | Yes/No別の箱ひげ図 |
 | `07_target_rate_by_category.png` | カテゴリ値ごとの購入率 |
@@ -95,10 +95,10 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 
 **効いたもの**
 - **厳密値 Target Encoding**(各モデル +0.003 前後、最大の改善要因)。数値列もビン分割せず値のままキーにする
-- **入れ子 CV によるリーク対策**(+0.00108)。学習行には内側CVのOOF値を当てる
+- **Out-of-Fold Target Encoding によるリーク対策**(+0.00108)。学習行には内側CVのOOF値を当てる
 - Count Encoding(LightGBM/XGBoost のみ。CatBoost では無効)
 - Triple TE + Smooth Keys + digit features + ビン数1024(+0.0005〜0.001)
-- catify(低カーデ数値のカテゴリ化)は **CatBoost 固有**(+0.0017)
+- catify(値の種類（ユニーク値）が少ない数値のカテゴリ化)は **CatBoost 固有**(+0.0017)
 
 **効かなかったもの**: 四則演算、交互作用TE(2〜13列すべて)、行フィンガープリント、元データの追加。
 各施策の詳細(なぜ試したか / 期待した効果 / 結果の考察)は `docs/fe_results_*.md` を参照。
@@ -106,7 +106,7 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 > `src/03_feature_engineering_<model>.py` は**関数の定義のみ**、`src/04_train_and_evaluate_<model>.py` が**実行**という分担。
 > この分離により、同じ関数を別の検証スクリプトからも再利用できる。
 
-## ⑤ HPO
+## ⑤ Hyperparameter Tuning(ハイパーパラメータの調整)
 
 **列サブサンプリングの見落としが最大の伸びしろだった**(2026-09-20、外部カーネル調査で発見)。
 92列のTE特徴量に対し全列を使うと、どの木も最強列(年収のTE)を根に選ぶため木が似通う。
@@ -132,11 +132,15 @@ uv run src/05_hyperparameter_tuning.py --report                 # これまで�
 呼ぶだけにして、収束設定や FE 構成が本番とズレないようにしている。解説は
 `notebooks/05_hyperparameter_tuning.ipynb`。
 
+**本番のパラメータの正本は `src/05_hyperparameter_tuning.py` の `FIXED`**(本番コマンドのうち探索しない固定部分)。
+05 の結果が 04 に自動で反映される仕組みはなく、`notebooks/04_train_and_evaluate.ipynb` は確定した値を書き写したうえで、
+6 章で `FIXED` と同じかを照合している(ずれていれば止まる)。下の再現コマンドも `FIXED` と同じ値にそろえること。
+
 | モデル | 試行数 | 1本あたり | 合計 | 優先度 |
 |---|---|---|---|---|
 | LightGBM | 9 | 約 4.2 分 | **約 0.6 時間** | **高**(`num_leaves` がデフォルト31のまま未調整) |
 | XGBoost | 10 | 約 10.8 分 | 約 1.8 時間 | 中 |
-| CatBoost | 5 | 約 66.7 分 | 約 5.6 時間 | 低(現在アンサンブルの重みが 0) |
+| CatBoost | 5 | 約 25 分 | 約 2.1 時間 | 低(現在アンサンブルの重みが 0) |
 
 > **期待値は低い。** 外部調査では、列サブサンプリング導入後にさらに深さや列比率を振った試行は
 > すべて -0.000023〜+0.000017 の誤差だった。未調整の `num_leaves` だけが本命。
@@ -144,26 +148,26 @@ uv run src/05_hyperparameter_tuning.py --report                 # これまで�
 ### 現行ベストの再現コマンド
 
 ```bash
-uv run src/04_train_and_evaluate_lgbm.py --patterns base,te1,cnt1,digit,sk --smooths auto,10,100 \
+uv run src/04_train_and_evaluate_lgbm.py --patterns base,te1,cnt1,digit,sk,te2home --smooths auto,10,100 --dedup --lean \
   --max_bin 1024 --feature_fraction 0.3 --max_depth 5 \
   --folds 5 --learning_rate 0.03 --n_estimators 8000 --early_stopping 200 --n_jobs 7 --save --tag lgbm
 
-uv run src/04_train_and_evaluate_xgb.py --pattern tte_sk_dig --max-bin 1024 \
+uv run src/04_train_and_evaluate_xgb.py --pattern tte_sk_dig --dedup --max-bin 1024 \
   --set-param colsample_bytree=0.3 --set-param max_depth=5 \
   --folds 5 --learning-rate 0.03 --n-estimators 8000 --early-stopping 200 --n-jobs 7 --save --out-suffix ""
 
-uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify,digits,skeys,te3 \
+uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify,digits,skeys,te3 --dedup --lean \
   --folds 5 --iters 1000 --lr 0.06 --fast --border 64 --hc-border 1024 --threads 7 --save
 
-uv run src/04_train_and_evaluate_realmlp.py --folds 5 --threads 7 --tag realmlp   # epochs は 2 から変えないこと
+uv run src/04_train_and_evaluate_realmlp.py --folds 5 --threads 7 --combo-home --tag realmlp   # epochs は 2 から変えないこと
 ```
 
 | モデル | OOF AUC | 備考 |
 |---|---|---|
 | **LightGBM** | **0.94610** | アンサンブル採用 |
-| **XGBoost** | **0.94608** | アンサンブル採用 |
-| **RealMLP** | **0.94589** | アンサンブル採用。GBDTとの相関が低く多様性を供給 |
-| CatBoost | 0.94589 | 現在アンサンブルの重みは 0 |
+| **XGBoost** | **0.94609** | アンサンブル採用 |
+| **RealMLP** | **0.94590** | アンサンブル採用。GBDTとの相関が低く多様性を供給 |
+| CatBoost | 0.94592 | 現在アンサンブルの重みは 0 |
 
 > **重いジョブは1つずつ実行すること**(8コア環境)。CatBoost と RealMLP を並列で走らせると
 > CPU を取り合って完走しない(実際に CatBoost が 0.33 コアまで押し出された)。
@@ -181,7 +185,12 @@ hill climbing で足し合わせる。選ばれた回数がそのまま重みに
 (弱くても非相関なら勝てる)。未採用の候補のうち最も非相関なものも提示するので、
 多様性が枯渇したときにどれを足せばよいかが分かる。
 
-**現行ベスト: LightGBM 1/3 / XGBoost 1/3 / RealMLP 1/3 → CV 0.94623 / Public LB 0.94645**
+**最終提出(2本)**: どちらも LightGBM 1/3 / XGBoost 1/3 / RealMLP 1/3 の順位平均
+
+| 提出 | CV | Public LB |
+|---|---|---|
+| **D**(現在のコード。LightGBM・RealMLP に自宅充電 × 自宅スタンド数を追加) | **0.946245** | 0.94640 |
+| 元の構成(タグ \inal-original-20260927\) | 0.946234 | **0.94645** |
 (**320位 / 2,732チーム**、2026-09-23 時点の暫定値)
 
 > ⚠ **hill climbing の出力をそのまま信じないこと。** 貪欲法は OOF 上の偶然を拾う。
@@ -238,11 +247,11 @@ z=+8.48 で誤差でないことが確定した。
 `--dump-features` を付けると、**fold 1 の学習行列を組み上げた直後に列名を `docs/features_<tag>.json` へ書いて終了する**(学習しない)。本番と同じコードパスを通るので列の取りこぼしがない。`notebooks/03_feature_engineering.ipynb` は、ノートブックで組み上げた列がこの JSON と一致するかを確かめる。
 
 ```bash
-uv run src/04_train_and_evaluate_lgbm.py --patterns base,te1,cnt1,digit,sk --smooths auto,10,100 \
+uv run src/04_train_and_evaluate_lgbm.py --patterns base,te1,cnt1,digit,sk,te2home --smooths auto,10,100 --dedup --lean \
   --sample 0.02 --folds 1 --dump-features --tag lgbm
-uv run src/04_train_and_evaluate_xgb.py --pattern tte_sk_dig --sample 0.02 --folds 1 \
+uv run src/04_train_and_evaluate_xgb.py --pattern tte_sk_dig --dedup --sample 0.02 --folds 1 \
   --dump-features --out-suffix ""
-uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify,digits,skeys,te3 --folds 5 \
+uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify,digits,skeys,te3 --dedup --lean --folds 5 \
   --rows 15000 --fast --dump-features --tag catboost
 uv run src/04_train_and_evaluate_realmlp.py --folds 1 --subsample 0.02 --dump-features --tag realmlp
 ```
@@ -258,21 +267,27 @@ uv run src/04_train_and_evaluate_realmlp.py --folds 1 --subsample 0.02 --dump-fe
 
 | Notebook | 対応する工程 | 内容 |
 |---|---|---|
-| `notebooks/01_eda.ipynb` | ① | データの素性、カーディナリティ、値ごとの購入率 |
+| `notebooks/01_eda.ipynb` | ① | データの素性、値の種類（ユニーク値）の数、値ごとの購入率 |
 | `notebooks/02_baseline.ipynb` | ② | 3モデルのベースライン(共通の CV ループ) |
-| `notebooks/03_feature_engineering.ipynb` | ③ | FE を**全モデル共通 → 一部共通 → モデル別**の順に実行して確かめ、組み上げた列が本番と一致するかを確認。不採用にした関数の一覧も載せる |
-| `notebooks/04_train_and_evaluate.ipynb` | ④ | FE を1つずつ足して効果を確認(効かない例も含む) |
-| `notebooks/05_hyperparameter_tuning.ipynb` | ⑤ | HPO の設計と所要時間の見積もり + 24試行の結果(すべて誤差か悪化) |
+| `notebooks/03_feature_engineering.ipynb` | ③ | read_csv から特徴量の作成までを **GBDT 共通 → GBDT モデル別 → RealMLP** の順にノートブック内で実行し、意図と根拠を説明。本番の .py と値まで一致することも確認。不採用にした施策の一覧も載せる |
+| `notebooks/04_train_and_evaluate.ipynb` | ④ | 4モデルを本番と同じ特徴量・設定で上から順に学習し、本番の OOF と一致することを確認(約80分)。補足に FE を1つずつ足した比較 |
+| `notebooks/05_hyperparameter_tuning.ipynb` | ⑤ | Hyperparameter Tuning の設計と所要時間の見積もり + 実行した 18 試行の結果(すべて誤差か悪化。計画 24 のうち 6 本は打ち切り) |
 | `notebooks/06_ensemble.ipynb` | ⑥⑦ | ブレンドの再現。相関の確認と DeLong 検定による採否判定まで |
 
 Jupyter で開く際は、カーネルに **`Python (kaggle 2609)`**(または `.venv` の Python)を選ぶこと。
 
+**ノートブックは `src/` を読み込んで動く。クローン・持ち出しの際は `src/` も必ず含めること。**
+04・06 などは特徴量を作る関数やモデル本体を `src/` から import しており、`notebooks/` だけでは動かない。
+関数をノートブックへ移さない理由は `notebooks/04_train_and_evaluate.ipynb` の冒頭に記載している
+(要点: 本番の正本を1か所に保つため。Target Encoding は fold ごとに作り直すので、列名だけ渡しても `src/` の関数は必要になる)。
+
 ## ディレクトリ構成
 
 ```
-src/                   # 本番パイプライン(EDA / baseline / FE / HPO / ensemble / 評価)
+src/                   # 本番パイプライン(EDA / baseline / FE / hyperparameter tuning / ensemble / 評価)
 notebooks/             # 工程を追える Notebook
 docs/                  # 各担当の検証記録、参考カーネルの調査結果
+  hyperparameter_tuning_results.csv  # ⑤ Hyperparameter Tuning の試行ごとの記録(05 が書き、05 の --report が読む)
 data/                  # train.csv / test.csv / sample_submission.csv(Git 管理外)
 datacheck/             # EDA の図(Git 管理外)
 oof/                   # oof_<model>.npy / pred_<model>.npy(アンサンブル用、Git 管理外)

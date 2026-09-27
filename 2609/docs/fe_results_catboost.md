@@ -29,10 +29,10 @@ CatBoost の学習速度が大幅に低下した(実測: 10万行 / 200 iteratio
 | `cnt` | 13列の Count Encoding(train+test で fit、教師なしのためリークなし) |
 | `cnt_ix` | 交互作用キーの Count Encoding |
 | `te_cat` | カテゴリ6列の Target Encoding |
-| `te_low` | 低カーデ数値5列の Target Encoding |
+| `te_low` | 値の種類（ユニーク値）が少ない数値5列の Target Encoding |
 | `te_all` | **13列全部(数値含む)の厳密値 Target Encoding**(S6E8ブレークスルー施策) |
 | `te_ix` | 交互作用キー10組の Target Encoding |
-| `catify` | **低カーデ数値5列(Age / Number_of_Cars_Owned / Charging_Stations_*×2 / Environmental_Concern_Level)を文字列化して cat_features に渡す**(CatBoost固有) |
+| `catify` | **値の種類（ユニーク値）が少ない数値5列(Age / Number_of_Cars_Owned / Charging_Stations_*×2 / Environmental_Concern_Level)を文字列化して cat_features に渡す**(CatBoost固有) |
 | `digits` | **digit features**。数値7列 × k=-4..3 の `(x // 10**k) % 10` を int8 列で追加。定数列(全行同値)を自動削除して **16列**(56列中40列はこのデータでは常に0)。浮動小数の丸め誤差で下位桁にゴミが入らないよう、値を 1e4 倍した int64 上で桁を取り出している |
 | `skeys` | Multi-Scale Smooth Keys。`floor(income)` / `floor(income/100)` / `floor(income/1000)` / `floor(commute)` の4本。**モデルには入れず TEのキーとしてのみ使う**(helper列) |
 | `te3` | **Triple Target Encoding**。同一キーに smooth = 10 / 20 / 100 の3系統を別列として同時投入。sum/count の集計は1回だけ行い3つの平滑度で共有するため、追加コストはほぼゼロ |
@@ -47,8 +47,8 @@ TE はすべて **fold内 fit** を厳守:
 
 | 施策 | ベースライン | 適用後 OOF AUC | 改善幅 | 備考 |
 |---|---|---|---|---|
-| `te_all,catify`(**採用した最終構成**) | 0.93790 (軽量base) | 0.93956 | **+0.00166** | 厳密値TE + 低カーデ数値のカテゴリ化。スクリーニング最良 |
-| `catify`(低カーデ数値→cat_features) | 0.93790 | 0.93883 | +0.00093 | CatBoost固有レバー。単独でも有効 |
+| `te_all,catify`(**採用した最終構成**) | 0.93790 (軽量base) | 0.93956 | **+0.00166** | 厳密値TE + 値の種類（ユニーク値）が少ない数値のカテゴリ化。スクリーニング最良 |
+| `catify`(値の種類（ユニーク値）が少ない数値→cat_features) | 0.93790 | 0.93883 | +0.00093 | CatBoost固有レバー。単独でも有効 |
 | `te_all`(13列 厳密値TE) | 0.93790 | 0.93898 | +0.00108 | S6E8の知見が本コンペでも再現。**内部Ordered TSとの二重適用による悪化は起きなかった** |
 | `te_all,cnt,te_ix` | 0.93790 | 0.93905 | +0.00115 | te_all単独とほぼ同等。cnt/te_ixの上積みはなく、`te_all,catify` に劣る |
 | `te_cat`(カテゴリ6列のみTE) | 0.93790 | 0.93810 | +0.00020 | 判定閾値ぎりぎり。te_all に完全に内包されるため単独採用せず |
@@ -72,7 +72,7 @@ uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify --folds 5 --iter
 - モデルパラメータ: `boosting_type=Plain`, `max_ctr_complexity=1`, `border_count=64`,
   `iterations=400`, `learning_rate=0.15`(**実行時間制約による短縮設定**。デフォルトの
   1000 iterations / 低learning_rate で回せばさらに上積みが期待できる ← 最優先のTODO)
-- `cat_features` = カテゴリ6列 + 低カーデ数値5列(catify)= 11列
+- `cat_features` = カテゴリ6列 + 値の種類（ユニーク値）が少ない数値5列(catify)= 11列
 
 ### 成果物
 
@@ -85,8 +85,8 @@ uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify --folds 5 --iter
 上位5特徴は `Subsidy_Available` > `te_Environmental_Concern_Level` > `te_Subsidy_Available` >
 `te_Annual_Income_USD` > `Environmental_Concern_Level`。**上位5つのうち3つがTE特徴**であり、
 特に `te_Environmental_Concern_Level`(5値)と `te_Annual_Income_USD`(13,214値)は
-生の列を大きく上回った。LightGBM担当の「高カーデ数値列の厳密値TEが主因」という所見と整合するが、
-CatBoostでは**低カーデ列のTEも同等以上に効いている**点が異なる。
+生の列を大きく上回った。LightGBM担当の「値の種類（ユニーク値）が多い数値列の厳密値TEが主因」という所見と整合するが、
+CatBoostでは**値の種類（ユニーク値）が少ない列のTEも同等以上に効いている**点が異なる。
 
 ### アンサンブル貢献度
 
@@ -108,7 +108,7 @@ OOFのランク相関は 0.9903。単体では LightGBM にわずかに劣るが
 | `cnt`(13列 Count Encoding) | 0.93790 | 0.93773 | -0.00017 | 横ばい。合成データのため count に情報が乗っていない |
 | `te_ix`(交互作用キーのTE) | 0.93790 | 0.93782 | -0.00008 | 横ばい。CatBoost が内部で ctr 組み合わせを作るため重複と推測 |
 | `cnt` / `te_ix` の te_all への上積み | 0.93898 (te_all) | 0.93905 | +0.00007 | 誤差範囲。特徴量49列に増えるコストに見合わず不採用 |
-| `drop_num`(TE後に生の低カーデ数値5列を落とす) | 0.93956 (te_all,catify) | 0.93895 | **-0.00061** | 生の列とTE列は非冗長。両方残すべき。指揮官指示により追加検証 |
+| `drop_num`(TE後に生の値の種類（ユニーク値）が少ない数値5列を落とす) | 0.93956 (te_all,catify) | 0.93895 | **-0.00061** | 生の列とTE列は非冗長。両方残すべき。指揮官指示により追加検証 |
 | `cnt` の `te_all,catify` への上積み | 0.93956 (te_all,catify) | 0.93958 | +0.00002 | **LightGBMではTE+Countが加算的に効いた(+0.0008)が、CatBoostでは完全に無効。** 内部CTRが件数情報を既に取り込んでいるためと推測。指揮官からの知見共有を受けて追加検証 |
 
 ## CatBoost固有の論点
@@ -204,7 +204,7 @@ TE はキーあたりの行数が減っても平滑化が効くため、サブ�
 およびその TE 列だけなので、**その列にだけ border を割り当てる**オプションを追加した。
 
 ```
---hc-border N   # per_float_feature_quantization で高カーデ数値列とその TE 列のみ border_count=N
+--hc-border N   # per_float_feature_quantization で値の種類（ユニーク値）が多い数値列とその TE 列のみ border_count=N
 ```
 
 - `--border 64 --hc-border 1024` は `--border 254` を全列に掛けるより**総ビン数がはるかに少なく**、
@@ -289,6 +289,6 @@ Windows環境の `uv` 呼び出し起因で `exit code 127` により未完走)
 - `digits` と `border` の分離測定(本セッションはセットでしか測っていない)
 - `--border 254` 全列 と `--border 64 --hc-border 1024` の比較
 - `one_hot_max_size` の調整(5 / 10 / 20)
-- `te_low` 単独、`drop_num`(TE後に生の低カーデ数値を落とす)
+- `te_low` 単独、`drop_num`(TE後に生の値の種類（ユニーク値）が少ない数値を落とす)
 - TEスムージング係数 m の調整(現在 20 固定)
 - 3列以上の高次交互作用

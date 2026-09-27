@@ -83,6 +83,23 @@ def parse_args() -> argparse.Namespace:
         help="学習せず、fold1 の特徴量の列名を docs/features_<tag>.json に書いて終了する",
     )
     p.add_argument("--tag", default="", help="label printed with the result")
+    p.add_argument(
+        "--combo-home", action="store_true",
+        help="自宅充電の可否 × 自宅スタンド数を 1 本のカテゴリ列として足す(EDA の交互作用の検証用)",
+    )
+    p.add_argument(
+        "--lean", action="store_true",
+        help="値の種類（ユニーク値）が少ない数値列の digit とカテゴリ列の TE を外す(fe.lean_columns()。--dedup と併用)",
+    )
+    p.add_argument("--drop-feats", default="", help="カンマ区切りで指定した列を学習から外す(エンコーディングの切り分け用)。存在しない列名なら止まる")
+    p.add_argument(
+        "--dedup", action="store_true",
+        help="他の列と同じ情報しか持たない列(fe.dedup_columns())を学習から外す",
+    )
+    p.add_argument(
+        "--out-suffix", default="",
+        help="成果物のファイル名の接尾辞。例 '_dedup' -> oof/oof_catboost_dedup.npy(既定は本番の名前)",
+    )
     return p.parse_args()
 
 
@@ -192,6 +209,14 @@ def main() -> None:
         drop_after_te,
     ) = build_features(components, args.rows)
 
+    if args.combo_home:
+        # 自宅充電の可否 × 自宅スタンド数を 1 本のカテゴリ列にする(購入率は CatBoost が内部で計算する)
+        def combo(frame):
+            return frame["Home_Charging_Possible"].astype(str) + "_" + frame["Charging_Stations_Near_Home"].astype(str)
+        X, X_test = X.assign(ix_home=combo(X)), X_test.assign(ix_home=combo(X_test))
+        feature_cols = feature_cols + ["ix_home"]
+        cat_features = cat_features + ["ix_home"]
+
     print(f"[{args.tag or args.fe}] rows={len(X)} te_cols={len(te_cols)}")
 
     params = dict(random_state=42, verbose=False, allow_writing_files=False)
@@ -250,6 +275,23 @@ def main() -> None:
                 if col in fold_cats:
                     fold_cats.remove(col)
 
+        if args.dedup:
+            # 重複している列を外す(平滑化の重複 TE・/1 の Smooth Key の TE)
+            dup = set(fe.dedup_columns())
+            fold_features = [c for c in fold_features if c not in dup]
+
+        if args.lean:
+            # エンコーディングを絞る(値の種類（ユニーク値）が少ない数値列の digit、カテゴリ列の TE)
+            lean = set(fe.lean_columns())
+            fold_features = [c for c in fold_features if c not in lean]
+
+        if args.drop_feats:
+            extra = [c.strip() for c in args.drop_feats.split(",") if c.strip()]
+            missing = [c for c in extra if c not in fold_features]
+            if missing:
+                raise SystemExit(f"--drop-feats に存在しない列: {missing}")
+            fold_features = [c for c in fold_features if c not in extra]
+
         fold_cats = [c for c in fold_cats if c in fold_features]
         used_features, used_cats = fold_features, fold_cats
 
@@ -270,7 +312,7 @@ def main() -> None:
             import feature_catalog
             feature_catalog.dump(
                 args.tag or "catboost", "CatBoost", fold_features,
-                cat_features=fold_cats, note=f"fe={args.fe}",
+                cat_features=fold_cats, note=f"fe={args.fe} dedup={args.dedup} lean={args.lean}",
             )
             return
 
@@ -298,10 +340,10 @@ def main() -> None:
         os.makedirs("importance", exist_ok=True)
 
         pd.DataFrame({"id": test["id"], fe.TARGET: test_pred}).to_csv(
-            "submit/submission_catboost.csv", index=False
+            f"submit/submission_catboost{args.out_suffix}.csv", index=False
         )
-        np.save("oof/oof_catboost.npy", oof_pred)
-        np.save("oof/pred_catboost.npy", test_pred)
+        np.save(f"oof/oof_catboost{args.out_suffix}.npy", oof_pred)
+        np.save(f"oof/pred_catboost{args.out_suffix}.npy", test_pred)
 
         import matplotlib
 
@@ -318,7 +360,7 @@ def main() -> None:
         ax.set_xlabel("CatBoost feature importance")
         ax.set_title(f"CatBoost importance (OOF AUC {oof_auc:.5f})")
         fig.tight_layout()
-        fig.savefig("importance/importance_catboost.png", dpi=130)
+        fig.savefig(f"importance/importance_catboost{args.out_suffix}.png", dpi=130)
         print("saved submit/oof/importance artifacts")
 
 

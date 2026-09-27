@@ -561,7 +561,7 @@ def main():
     )
     ap.add_argument(
         "--exact-te", action="store_true",
-        help="厳密値TE(高カーデ2列+Smooth Keys3本, Triple smooth=auto/10/100 の15列)を追加",
+        help="厳密値TE(値の種類（ユニーク値）が多い2列+Smooth Keys3本, Triple smooth=auto/10/100 の15列)を追加",
     )
     ap.add_argument(
         "--no-orig", action="store_true",
@@ -569,7 +569,19 @@ def main():
     )
     ap.add_argument(
         "--digits", action="store_true",
-        help="高カーデ2列(年収・通勤距離)の各桁をカテゴリ特徴として追加",
+        help="値の種類（ユニーク値）が多い2列(年収・通勤距離)の各桁をカテゴリ特徴として追加",
+    )
+    ap.add_argument(
+        "--combo-home", action="store_true",
+        help="自宅充電の可否 × 自宅スタンド数を組み合わせキーに足す(EDA の交互作用の検証用)",
+    )
+    ap.add_argument(
+        "--km5", action="store_true",
+        help="通勤距離 /5 のキー(Daily_km_/_5_floor_)を足す。2026-09-27 に不採用。旧構成の再現用",
+    )
+    ap.add_argument(
+        "--ratio", action="store_true",
+        help="通勤距離 ÷ 年齢 の比(_Daily_Commute_km_/_Age)を足す。2026-09-27 に不採用。旧構成の再現用",
     )
     args = ap.parse_args()
 
@@ -599,19 +611,20 @@ def main():
     num_cols = X.select_dtypes(exclude=["object"]).columns.tolist()
 
     category_map = {}
+    extra_combos = [("Home_Charging_Possible", "Charging_Stations_Near_Home")] if args.combo_home else None
     t0 = time.time()
     X, new_cat_cols, new_num_cols, combo_names = build_features(
-        X, cat_cols, num_cols, category_map, fit=True, orig=orig, digits=args.digits
+        X, cat_cols, num_cols, category_map, fit=True, orig=orig, digits=args.digits, ratio=args.ratio, km5=args.km5, extra_combos=extra_combos
     )
     X_test, _, _, _ = build_features(
-        X_test, cat_cols, num_cols, category_map, fit=False, orig=orig, digits=args.digits
+        X_test, cat_cols, num_cols, category_map, fit=False, orig=orig, digits=args.digits, ratio=args.ratio, km5=args.km5, extra_combos=extra_combos
     )
     cat_cols = cat_cols + new_cat_cols
     num_cols = num_cols + new_num_cols
     print(f"FE done in {time.time() - t0:.0f}s | cat={len(cat_cols)} num={len(num_cols)} "
           f"| X={X.shape} X_test={X_test.shape}", flush=True)
 
-    # ── 厳密値TE用キーフレーム(高カーデ2列+Smooth Keys, 教師なしなので全体で作ってよい)──
+    # ── 厳密値TE用キーフレーム(値の種類（ユニーク値）が多い2列+Smooth Keys, 教師なしなので全体で作ってよい)──
     te_keys_all = te_keys_test = None
     if args.exact_te:
         te_keys_all = build_te_key_frame(X)
@@ -647,7 +660,7 @@ def main():
         X_val[te_names] = te.transform(X_val[combo_names])
         X_tst[te_names] = te.transform(X_tst[combo_names])
 
-        # ── 厳密値TE(高カーデ2列+Smooth Keys, 入れ子CVでリーク防止) ──────
+        # ── 厳密値TE(値の種類（ユニーク値）が多い2列+Smooth Keys, Out-of-Foldでリーク防止) ──────
         if args.exact_te:
             key_cols = list(te_keys_all.columns)
             ht_tr, (ht_val, ht_tst) = target_encode_highcard(
@@ -682,7 +695,7 @@ def main():
             import feature_catalog
             feature_catalog.dump(
                 args.tag, "RealMLP", X_tr.columns, cat_features=cat_cols,
-                note=f"exact_te={args.exact_te} digits={args.digits} no_orig={args.no_orig}",
+                note=f"exact_te={args.exact_te} digits={args.digits} no_orig={args.no_orig} ratio={args.ratio} km5={args.km5}",
             )
             return
         print(f"{'#' * 16}\n### Fold {fold}/5  (train={len(y_tr)}, val={len(y_val)})\n{'#' * 16}", flush=True)

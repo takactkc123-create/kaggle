@@ -177,6 +177,12 @@ PATTERNS = {
         enc="ord", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS,
         te_smoothings=("auto", 10.0, 100.0), smooth_keys=True, digits=True,
     ),
+    # 2026-09-27: EDA で見つかった唯一の交互作用(自宅充電の可否 × 自宅近くのスタンド数)を再検証
+    "tte_sk_dig_home": _p(
+        enc="ord", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS,
+        te_smoothings=("auto", 10.0, 100.0), smooth_keys=True, digits=True,
+        te_inter=[("Home_Charging_Possible", "Charging_Stations_Near_Home")],
+    ),
     # --- 2026-09-21: 誤差として見送った「符号がプラス」の施策の再検証 ---
     # One-Hot は単体で +0.00005 だった。本番構成(Triple TE + digit)の上で測り直す
     "tte_sk_dig_ohe": _p(
@@ -365,13 +371,29 @@ def run_cv(cfg, args):
             X_va = pd.concat([X_va.reset_index(drop=True), nb_va], axis=1)
             X_te = pd.concat([X_te.reset_index(drop=True), nb_te], axis=1)
 
+        if args.dedup:
+            # 重複している列を外す(平滑化の重複 TE・値が同じ digit)
+            drop = [c for c in fe.dedup_columns() if c in X_tr.columns]
+            X_tr, X_va, X_te = (f.drop(columns=drop) for f in (X_tr, X_va, X_te))
+            if importances.shape[0] != X_tr.shape[1]:
+                importances = np.zeros(X_tr.shape[1])
+
+        if args.drop_feats:
+            extra = [c.strip() for c in args.drop_feats.split(",") if c.strip()]
+            missing = [c for c in extra if c not in X_tr.columns]
+            if missing:
+                raise SystemExit(f"--drop-feats に存在しない列: {missing}")
+            X_tr, X_va, X_te = (f.drop(columns=extra) for f in (X_tr, X_va, X_te))
+            if importances.shape[0] != X_tr.shape[1]:
+                importances = np.zeros(X_tr.shape[1])
+
         if args.dump_features:
             import feature_catalog
             feature_catalog.dump(
                 f"xgb{args.out_suffix}", "XGBoost", X_tr.columns,
                 cat_features=[c for c in X_tr.columns
                               if str(X_tr[c].dtype) == "category"],
-                note=f"pattern={args.pattern}",
+                note=f"pattern={args.pattern} dedup={args.dedup}",
             )
             return
 
@@ -461,6 +483,11 @@ def main():
     ap.add_argument(
         "--dump-features", action="store_true",
         help="学習せず、fold1 の特徴量の列名を docs/features_<tag>.json に書いて終了する",
+    )
+    ap.add_argument("--drop-feats", default="", help="カンマ区切りで指定した列を学習から外す(エンコーディングの切り分け用)。存在しない列名なら止まる")
+    ap.add_argument(
+        "--dedup", action="store_true",
+        help="他の列と同じ情報しか持たない列(fe.dedup_columns())を学習から外す",
     )
     ap.add_argument(
         "--out-suffix",

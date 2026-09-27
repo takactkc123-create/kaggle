@@ -2,20 +2,20 @@
 
 RealMLP リーダーの検証記録。採否基準は ±0.0002(CLAUDE.md 準拠)。
 
-## 2026-09-18: 厳密値 Target Encoding(高カーデ2列+Smooth Keysに絞る版) — **不採用**
+## 2026-09-18: 厳密値 Target Encoding(値の種類（ユニーク値）が多い2列+Smooth Keysに絞る版) — **不採用**
 
 ### 背景
 
 FE Lead のコード実読(`fe_results_all.md` §3-3/§4)により、GBDT3種には入っている
 「13列の厳密値TE」が RealMLP には無い(combo TE 2列のみ)ことが判明。54列一括投入は
 CPU競合で完走せず、かつ RealMLP は列追加コストが高い(PBLD embedding が数値列ごとに
-小ネットワークを持つ)ため、**効果源が確実な高カーディナリティ2列に絞った15列版**を検証した。
+小ネットワークを持つ)ため、**効果源が確実な値の種類（ユニーク値）が多い2列に絞った15列版**を検証した。
 
 ### 実装
 
 - `03_feature_engineering_realmlp.py` に追加: `build_te_key_frame`(キー: `Annual_Income_USD`, `Daily_Commute_km` の
   厳密値 + `sk_inc10`/`sk_inc100`/`sk_inc1000` の Smooth Keys、計5キー)、
-  `target_encode_highcard`(入れ子CV: outer fold 内で inner `StratifiedKFold(5)` を回し、
+  `target_encode_highcard`(Out-of-Fold: outer fold 内で inner `StratifiedKFold(5)` を回し、
   学習行には inner-OOF、valid/test には学習fold全体の統計を適用してリーク防止)、
   smooth は `auto`/10/100 の Triple 同時投入 → **5キー × 3 smooth = 15列**。
 - `04_train_and_evaluate_realmlp.py` に `--exact-te` フラグを追加(デフォルト `False` = 既存動作と完全に同じ)。

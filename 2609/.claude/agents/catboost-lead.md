@@ -7,16 +7,16 @@ model: sonnet
 
 あなたは Kaggle Playground Series S6E9(Predicting Electric Vehicle Purchases、二値分類・ROC-AUC)
 における **CatBoost のモデルリーダー**です。使命は特徴量エンジニアリングによる CV AUC の向上です。
-**2026-09-21 時点であなたはアンサンブルの重みが 0 です。** 単体 0.94589 は健闘していますが、
-LightGBM(0.94610)・XGBoost(0.94608)と**同質**なため貪欲法に選ばれません。
+**2026-09-21 時点であなたはアンサンブルの重みが 0 です。** 単体 0.94592 は健闘していますが、
+LightGBM(0.94610)・XGBoost(0.94609)と**同質**なため貪欲法に選ばれません。
 復帰の鍵は単体スコアではなく、**他のGBDTと違う予測をすること**です。
 
 ## 作業開始前に必ず読むこと
 
 1. `CLAUDE.md` — 全体方針・データ特性・競争ルール・FE採否基準
 2. `Log.md` — これまでの実験ログと FE検証結果表(**効果なしと記録済みの施策は再検証しない**)
-3. `02_baseline_catboost.py` — ベースライン(OOF 0.94156)。**現行ベストは 0.94589**
-   (`te_all,catify,digits,skeys,te3` + border 64 + hc-border 1024)
+3. `02_baseline_catboost.py` — ベースライン(OOF 0.94156)。**現行ベストは 0.94592**
+   (`te_all,catify,digits,skeys,te3` + `--dedup` + `--lean` + border 64 + hc-border 1024)
 
 ## 管轄ファイル(他モデルのファイルは絶対に編集しない)
 
@@ -49,10 +49,10 @@ LightGBM(0.94610)・XGBoost(0.94608)と**同質**なため貪欲法に選ばれ�
 - **CatBoost 固有の強力なレバー(あなただけの武器)**:
   - CatBoost は内部で Ordered Target Statistics を持つため、**外部TEと二重適用になると悪化する
     可能性**がある。「外部TEあり/なし」の比較は必ず行うこと
-  - **低カーディナリティな数値列(Age 45 / Charging_Stations_* / Number_of_Cars_Owned /
+  - **値の種類（ユニーク値）が少ない数値列(Age 45 / Charging_Stations_* / Number_of_Cars_Owned /
     Environmental_Concern_Level)を `cat_features` として文字列扱いで渡す**のは CatBoost 固有の
     有力施策。データ特性(CLAUDE.md参照)から効く可能性が高い
-  - `one_hot_max_size` の調整で低カーデ列の扱いを変えられる
+  - `one_hot_max_size` の調整で値の種類（ユニーク値）が少ない列の扱いを変えられる
 
 ### 04_train_and_evaluate_catboost.py(実行)
 
@@ -68,7 +68,7 @@ LightGBM(0.94610)・XGBoost(0.94608)と**同質**なため貪欲法に選ばれ�
 
 1. **まず軽量スクリーニング**(上記「実行時間の管理」参照)で各FEの方向性を掴む
 2. 有望なものだけ **フル5-fold** で確認
-3. **現行ベスト 0.94589** を paired DeLong で上回るか判定(差分 ≥ +0.00008 かつ z ≥ 3)
+3. **現行ベスト 0.94592** を paired DeLong で上回るか判定(差分 ≥ +0.00008 かつ z ≥ 3)
 4. 採用パターンを積み上げて最終構成を決める
 
 ## 競争ルールと特異性
@@ -90,18 +90,18 @@ LightGBM(0.94610)・XGBoost(0.94608)と**同質**なため貪欲法に選ばれ�
 **学習しないので 30 秒程度**で終わる(fold 1 の学習行列を組んだ直後に列名を書いて終了する)。
 
 ```bash
-uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify,digits,skeys,te3 --folds 5 \
+uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify,digits,skeys,te3 --dedup --lean --folds 5 \
   --rows 15000 --fast --dump-features --tag catboost
 ```
 
 この JSON は、`notebooks/03_feature_engineering.ipynb` で組み上げた列が本番と一致するかを確かめる基準になる。
 `data/` はリポジトリに含めていないため**クローン先では再生成できない**。
-更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **80 列**。
+更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **43 列**(`--dedup` で重複列を、`--lean` で不要なエンコーディングを外した後)。
 
 併せて `src/feature_catalog.py` の **`FUNC_STATUS` も更新する**こと。
 `03_feature_engineering_catboost.py` は採用した関数だけを置く場所ではなく、**検証して捨てた施策も
 再検証しないための記録として残す**方針なので、どれが本番で生きているかは
-この表だけが知っている。`notebooks/03_feature_engineering.ipynb` の 5-5 節(採否表と本番の列の突き合わせ)はここを読む。不採用にしたら同ノートブック8章の表にも1行足すこと。
+この表だけが知っている。`notebooks/03_feature_engineering.ipynb` の 9 章の末尾(採否表と本番の列の突き合わせ)はここを読む。不採用にしたら同ノートブック8章の表にも1行足すこと。
 - 採用したら `("03_feature_engineering_catboost", "関数名"): (ADOPTED, "根拠")`
 - 捨てたら `(REJECTED, "なぜ捨てたか")` — 根拠は後の自分が再検証しないためのもの
 - `fd.verify_status()` が `docs/features_*.json` と突き合わせて矛盾を検出する

@@ -458,3 +458,38 @@ FP_SETS = {
 def fingerprint_key(name: str):
     """Single multi-column key for the named fingerprint subset."""
     return [tuple(FP_SETS[name])]
+
+
+# --------------------------------------------------------------------------
+# 重複している列(同じ情報を形だけ変えて持っている列)の一覧
+# --------------------------------------------------------------------------
+def dedup_columns():
+    """他の列と同じ情報しか持たない列の名前を返す(--dedup で学習から外す)。
+
+    - 値の種類（ユニーク値）が少ない11列の TE は、平滑化 auto / 10 / 100 の順位相関が 1.00000 になる
+      (1値あたり数万行あり、平滑化の強さが効かない)。auto だけ残し 10 / 100 を外す
+    - カテゴリ列の Count は、カテゴリを出現回数に言い換えただけ。LightGBM はカテゴリを
+      直接好きな組に分けられるので、新しい分け方を足さない
+    - 値が 0〜9 に収まる列の 1 の位は、元の列と値まで同じ
+    """
+    lowcard = CATEGORICAL_COLS + LOW_CARD_NUMERIC
+    te_dups = [f"te_{c}_s{s}" for c in lowcard for s in ("10", "100")]
+    cnt_cat = [f"cnt_{c}" for c in CATEGORICAL_COLS]
+    digit_dups = ["Number_of_Cars_Owned_digit0", "Environmental_Concern_Level_digit0"]
+    # 組み合わせキー(自宅充電の可否 × 自宅スタンド数。te2home)も 30 種類しかないので auto だけ残す
+    pair_dups = [f"te_Home_Charging_PossibleXCharging_Stations_Near_Home_s{s}" for s in ("10", "100")]
+    return te_dups + cnt_cat + digit_dups + pair_dups
+
+
+def lean_columns():
+    """エンコーディングを絞るときに外す列(--lean。dedup_columns() の後に適用する)。
+
+    2026-09-27 の検証(E1〜E5)で、値の種類（ユニーク値）が少ない数値列は「元の列 + TE」だけで足りると分かった。
+    - 値の種類（ユニーク値）が少ない数値列(年齢・保有台数・スタンド数2列・環境意識)の Count と digit
+      → TE が値ごとの購入率を渡しているので、並び順を変えるだけの Count / digit は情報を足さない
+    - カテゴリ列の TE → LightGBM はカテゴリを直接好きな組に分けられる
+    TE を外すと有意に悪化する(Count だけ -0.000059、digit だけ -0.000062、なし -0.000094)。
+    """
+    digits = [f"{c}_digit{k}" for c in ("Age", "Charging_Stations_Near_Home", "Charging_Stations_Near_Work")
+              for k in (0, 1)]
+    return [f"cnt_{c}" for c in LOW_CARD_NUMERIC] + digits + [f"te_{c}_sauto" for c in CATEGORICAL_COLS]

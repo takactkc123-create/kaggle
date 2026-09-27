@@ -23,7 +23,7 @@ model: sonnet
 
 ## 現状
 
-- OOF AUC **0.94589**(2エポック)。単体では LightGBM 0.94610 / XGBoost 0.94608 に次ぐ3位
+- OOF AUC **0.94590**(2エポック)。単体では LightGBM 0.94610 / XGBoost 0.94609 / CatBoost 0.94592 に次ぐ4位
 - 環境に **GPUはなく torch は CPU版のみ**。1エポック約290秒(7スレッド)、フル5-fold約50分
 
 ## 管轄ファイル
@@ -56,7 +56,7 @@ model: sonnet
 - **seed averaging**: NNは初期値依存が大きく、GBDTより効果が期待できる。
   ただし **fold分割の random_state=42 は変えないこと**(変えるとアンサンブルが破綻する)
 - ~~GBDT向けFEの取り込み~~ → **検証済み・いずれも不採用**(2026-09-21〜22)
-  - 厳密値TE(高カーデ2列+Smooth Keys): 単体 +0.000156 だが **GBDTとの相関が上がり**
+  - 厳密値TE(値の種類（ユニーク値）が多い2列+Smooth Keys): 単体 +0.000156 だが **GBDTとの相関が上がり**
     アンサンブル寄与はゼロ(z=+0.06)。TEはGBDTと同じ情報源なので予測がGBDTに寄る
   - digit features: -0.00002。既に floor 値の embedding と年収の /100・/1000 区分を持つため重複
   - 元データ由来の org_mean: 現在**採用中**。寄与はアンサンブルで +0.000022(z=+3.86)
@@ -82,12 +82,12 @@ uv run src/04_train_and_evaluate_realmlp.py --folds 1 --subsample 0.02 --dump-fe
 
 この JSON は、`notebooks/03_feature_engineering.ipynb` で組み上げた列が本番と一致するかを確かめる基準になる。
 `data/` はリポジトリに含めていないため**クローン先では再生成できない**。
-更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **38 列**。
+更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **38 列**(`--combo-home` で組み合わせキーを1組足した後)。
 
 併せて `src/feature_catalog.py` の **`FUNC_STATUS` も更新する**こと。
 `03_feature_engineering_realmlp.py` は採用した関数だけを置く場所ではなく、**検証して捨てた施策も
 再検証しないための記録として残す**方針なので、どれが本番で生きているかは
-この表だけが知っている。`notebooks/03_feature_engineering.ipynb` の 5-5 節(採否表と本番の列の突き合わせ)はここを読む。不採用にしたら同ノートブック8章の表にも1行足すこと。
+この表だけが知っている。`notebooks/03_feature_engineering.ipynb` の 9 章の末尾(採否表と本番の列の突き合わせ)はここを読む。不採用にしたら同ノートブック8章の表にも1行足すこと。
 - 採用したら `("03_feature_engineering_realmlp", "関数名"): (ADOPTED, "根拠")`
 - 捨てたら `(REJECTED, "なぜ捨てたか")` — 根拠は後の自分が再検証しないためのもの
 - `fd.verify_status()` が `docs/features_*.json` と突き合わせて矛盾を検出する

@@ -1,4 +1,4 @@
-"""④ HPO — ハイパーパラメータ探索のフレーム。
+"""⑤ Hyperparameter Tuning — ハイパーパラメータ探索のフレーム。
 
 設計方針:
 - **学習コードは書かない。** 既存の `04_train_and_evaluate_<model>.py` を引数違いで呼ぶだけにする。
@@ -13,7 +13,7 @@
     uv run src/05_hyperparameter_tuning.py lgbm --only num_leaves   # 特定の軸だけ
     uv run src/05_hyperparameter_tuning.py --report                 # これまでの結果を表で表示
 
-結果は `hyperparameter_tuning_results.csv` に追記される。
+結果は `docs/hyperparameter_tuning_results.csv` に追記される(リポジトリのルートで実行すること)。
 """
 
 import argparse
@@ -24,30 +24,30 @@ import re
 import subprocess
 import time
 
-RESULTS = "hyperparameter_tuning_results.csv"
+RESULTS = "docs/hyperparameter_tuning_results.csv"
 
 # 1本あたりの実測時間(秒)。フル5-fold・7スレッド。見積もりに使う。
 RUNTIME = {"lgbm": 250, "xgb": 650, "catboost": 1500}   # catboost は本番設定(iters=1000+fast)の実測。depth を上げる試行は 1.5〜2倍かかる
 
 # 各モデルの現行ベスト(比較の基準)。07_compare_predictions.py に渡す OOF 名も兼ねる。
-BASELINE = {"lgbm": 0.946095, "xgb": 0.946077, "catboost": 0.94589, "realmlp": 0.945888}
+BASELINE = {"lgbm": 0.946109, "xgb": 0.946087, "catboost": 0.945924, "realmlp": 0.945897}
 
 # 本番構成の固定部分。ここは探索対象ではない(FE と収束設定)。
 FIXED = {
     "lgbm": [
-        "--patterns", "base,te1,cnt1,digit,sk", "--smooths", "auto,10,100",
+        "--patterns", "base,te1,cnt1,digit,sk,te2home", "--smooths", "auto,10,100", "--dedup", "--lean",
         "--max_bin", "1024", "--feature_fraction", "0.3", "--max_depth", "5",
         "--folds", "5", "--learning_rate", "0.03", "--n_estimators", "8000",
         "--early_stopping", "200", "--n_jobs", "7", "--save",
     ],
     "xgb": [
-        "--pattern", "tte_sk_dig", "--max-bin", "1024",
+        "--pattern", "tte_sk_dig", "--dedup", "--max-bin", "1024",
         "--set-param", "colsample_bytree=0.3", "--set-param", "max_depth=5",
         "--folds", "5", "--learning-rate", "0.03", "--n-estimators", "8000",
         "--early-stopping", "200", "--n-jobs", "7", "--save",
     ],
     "catboost": [
-        "--fe", "te_all,catify,digits,skeys,te3", "--folds", "5",
+        "--fe", "te_all,catify,digits,skeys,te3", "--dedup", "--lean", "--folds", "5",
         "--iters", "1000", "--lr", "0.06", "--fast",
         "--border", "64", "--hc-border", "1024", "--threads", "7",
     ],

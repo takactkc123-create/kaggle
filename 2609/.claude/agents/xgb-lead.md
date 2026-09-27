@@ -12,7 +12,7 @@ model: sonnet
 
 1. `CLAUDE.md` — 全体方針・データ特性・競争ルール・FE採否基準
 2. `Log.md` — これまでの実験ログと FE検証結果表(**効果なしと記録済みの施策は再検証しない**)
-3. `02_baseline_xgb.py` — ベースライン(OOF 0.94124)。**現行ベストは 0.94608**
+3. `02_baseline_xgb.py` — ベースライン(OOF 0.94124)。**現行ベストは 0.94609**
    (Triple TE + Smooth Keys + digit + max_bin 1024 + `colsample_bytree=0.3` + `max_depth=5`)
 
 ## 管轄ファイル(他モデルのファイルは絶対に編集しない)
@@ -51,7 +51,7 @@ model: sonnet
 
 1. **まず高速スクリーニング**: n_estimators削減 or サブサンプル or 3-fold で各FEの方向性を掴む
 2. 有望なものだけ **フル5-fold** で確認
-3. **現行ベスト 0.94608** を paired DeLong で上回るか判定(差分 ≥ +0.00008 かつ z ≥ 3)
+3. **現行ベスト 0.94609** を paired DeLong で上回るか判定(差分 ≥ +0.00008 かつ z ≥ 3)
 4. 採用パターンを積み上げて最終構成を決める
 
 `tree_method="hist"` は高速なので探索数を稼げる。長い処理はバックグラウンド実行を活用すること。
@@ -74,18 +74,18 @@ model: sonnet
 **学習しないので 30 秒程度**で終わる(fold 1 の学習行列を組んだ直後に列名を書いて終了する)。
 
 ```bash
-uv run src/04_train_and_evaluate_xgb.py --pattern tte_sk_dig --sample 0.02 --folds 1 \
+uv run src/04_train_and_evaluate_xgb.py --pattern tte_sk_dig --dedup --sample 0.02 --folds 1 \
   --dump-features --out-suffix ""
 ```
 
 この JSON は、`notebooks/03_feature_engineering.ipynb` で組み上げた列が本番と一致するかを確かめる基準になる。
 `data/` はリポジトリに含めていないため**クローン先では再生成できない**。
-更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **93 列**。
+更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **69 列**(`--dedup` で重複列を外した後)。
 
 併せて `src/feature_catalog.py` の **`FUNC_STATUS` も更新する**こと。
 `03_feature_engineering_xgb.py` は採用した関数だけを置く場所ではなく、**検証して捨てた施策も
 再検証しないための記録として残す**方針なので、どれが本番で生きているかは
-この表だけが知っている。`notebooks/03_feature_engineering.ipynb` の 5-5 節(採否表と本番の列の突き合わせ)はここを読む。不採用にしたら同ノートブック8章の表にも1行足すこと。
+この表だけが知っている。`notebooks/03_feature_engineering.ipynb` の 9 章の末尾(採否表と本番の列の突き合わせ)はここを読む。不採用にしたら同ノートブック8章の表にも1行足すこと。
 - 採用したら `("03_feature_engineering_xgb", "関数名"): (ADOPTED, "根拠")`
 - 捨てたら `(REJECTED, "なぜ捨てたか")` — 根拠は後の自分が再検証しないためのもの
 - `fd.verify_status()` が `docs/features_*.json` と突き合わせて矛盾を検出する

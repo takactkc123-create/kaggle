@@ -44,7 +44,7 @@ CATEGORICAL_COLS = [
     "Range_Anxiety_Level",
 ]
 
-# 低カーディナリティ数値列 (catify / 交互作用キーの候補)
+# 値の種類（ユニーク値）が少ない数値列 (catify / 交互作用キーの候補)
 # fe_lgbm.LOW_CARD_NUMERIC と fe_catboost.LOWCARD_NUM_COLS は同一内容 (順序のみ違う)
 LOWCARD_NUM_COLS = [
     "Age",
@@ -131,7 +131,7 @@ def make_key_frame(train: pd.DataFrame, test: pd.DataFrame):
 
 
 # ==========================================================================
-# 3. Smooth Keys (高カーデ数値列の粗い解像度キー)  reference_URL.md S-3
+# 3. Smooth Keys (値の種類（ユニーク値）が多い数値列の粗い解像度キー)  reference_URL.md S-3
 #    ★ 4モデルで実装が食い違っている箇所 ★
 #      fe_lgbm     : inc/10,  inc/100,  inc/1000,  floor(km)
 #      fe_xgb      : inc/100, inc/1000, inc/10000, floor(km)
@@ -224,12 +224,12 @@ def count_encode(keys_tr: pd.DataFrame, keys_te: pd.DataFrame, cols, freq: bool 
 
 
 # ==========================================================================
-# 6. Target Encoding (fold 内 fit + 学習行は inner-OOF = 入れ子TE)
+# 6. Target Encoding (fold 内 fit + 学習行は inner-OOF = Out-of-Fold TE)
 #    出典: fe_lgbm.target_encode_fold (XGB で +0.00108 を出した実装形)
 #    差分: 「単純 fold 内 fit」版 (学習行にも fold 全体の統計を当てる) は学習行に
-#          楽観バイアスが乗り、入れ子版より **-0.00108** 劣る。
+#          楽観バイアスが乗り、Out-of-Fold 版より **-0.00108** 劣る。
 #          fe_catboost.target_encode / fe_xgb.fit_apply_te_cv_nested_multi も同じ
-#          入れ子方式。ここでは (sum,count) 集計を smooth 間で共有する fe_lgbm 版を
+#          Out-of-Fold 方式。ここでは (sum,count) 集計を smooth 間で共有する fe_lgbm 版を
 #          採用 (Triple TE の追加コストがほぼゼロになる)。
 #    Triple TE = smooth を auto/10/100 の3系統「同時投入」 (選ぶのではない)。
 # ==========================================================================
@@ -303,14 +303,14 @@ def target_encode_fold(keys_fit: pd.DataFrame, y_fit, other_frames, cols,
 
 
 # ==========================================================================
-# 7. catify (低カーデ数値列をカテゴリとして扱う)
+# 7. catify (値の種類（ユニーク値）が少ない数値列をカテゴリとして扱う)
 #    出典: fe_catboost.cast_to_str (+0.00170)
 #    LightGBM では category dtype、XGBoost では enable_categorical、
 #    CatBoost では cat_features として渡す。RealMLP は build_features 内の
 #    `{col}_cat_` (floor 値の factorize) が実質これに相当し**適用済み**。
 # ==========================================================================
 def catify(tr: pd.DataFrame, te: pd.DataFrame, cols=None, mode: str = "category"):
-    """低カーデ数値列をカテゴリ扱いに変換した (tr, te) を返す."""
+    """値の種類（ユニーク値）が少ない数値列をカテゴリ扱いに変換した (tr, te) を返す."""
     cols = LOWCARD_NUM_COLS if cols is None else cols
     tr, te = tr.copy(), te.copy()
     for c in cols:

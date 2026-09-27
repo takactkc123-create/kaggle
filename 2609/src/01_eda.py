@@ -103,7 +103,7 @@ def plot_numeric_histograms(df, target, show=False):
     n_rows, n_cols = grid(len(NUM_COLS))
     for i, col in enumerate(NUM_COLS):
         plt.subplot(n_rows, n_cols, i + 1)
-        # 低カーデ列は値ごとに1本のバーにしないと、ビンが値をまたいで分布が歪む
+        # 値の種類（ユニーク値）が少ない列は値ごとに1本のバーにしないと、ビンが値をまたいで分布が歪む
         discrete = df[col].nunique() <= LOW_CARD_MAX
         sns.histplot(data=df, x=col, hue=target, multiple="stack", palette=PALETTE,
                      discrete=discrete, bins="auto" if discrete else 50)
@@ -163,7 +163,7 @@ def plot_target_rate_by_category(df, target, show=False):
 
 
 def plot_target_rate_by_numeric(df, target, show=False):
-    # 厳密値TEが効いた構造を確認するため、低カーデ列は値そのまま、高カーデ列は分位ビンで購入率を見る
+    # 厳密値TEが効いた構造を確認するため、値の種類（ユニーク値）が少ない列は値そのまま、値の種類（ユニーク値）が多い列は分位ビンで購入率を見る
     y = (df[target] == "Yes").astype(int)
     base = y.mean()
     n_rows, n_cols = grid(len(NUM_COLS))

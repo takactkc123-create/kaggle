@@ -19,12 +19,12 @@ S6E9 の4モデル(LightGBM / XGBoost / CatBoost / RealMLP)に散らばってい
 |---|---|---|---|---|
 | 厳密値 TE(13列) | ✅ | ✅ | ✅ | ⬜ **未適用** |
 | Triple TE(smooth 3系統同時) | ✅ auto/10/100 | ✅ auto/10/100 | △ **10/20/100(`auto` 欠落)** | ⬜ 未適用 |
-| 入れ子 TE(学習行 inner-OOF) | ✅ | ✅ (+0.00108) | ✅ | △ sklearn TargetEncoder(cv=5) |
+| Out-of-Fold TE(学習行 inner-OOF) | ✅ | ✅ (+0.00108) | ✅ | △ sklearn TargetEncoder(cv=5) |
 | Smooth Keys(income 粗解像度) | △ /10,/100,/1000 | △ /100,/1000,/10000 | △ **/1(重複),/100,/1000** | △ cat特徴のみ(TEキーでない) |
 | Smooth Key を Count のキーにも使う | ⬜(`skcnt` 未使用) | ⬜(`smooth_keys_ce` 未使用) | ⬜ | ⬜ |
 | Count / Frequency Encoding | ✅ (+0.00083) | ✅ (+0.00049) | ❌ (-0.00017) | △ **1列のみ・train のみで fit** |
 | digit features | ✅ float実装 | ✅ float実装 | ✅ 整数実装 | △ `is_multiple_10` / `decimal` のみ |
-| catify(低カーデ数値→カテゴリ) | ⬜ **未検証** | ⬜ **未検証** | ✅ (+0.00170) | ✅ 相当(`{col}_cat_` factorize) |
+| catify(値の種類（ユニーク値）が少ない数値→カテゴリ) | ⬜ **未検証** | ⬜ **未検証** | ✅ (+0.00170) | ✅ 相当(`{col}_cat_` factorize) |
 | ビン数引き上げ | ✅ max_bin=1024 | ✅ max_bin=1024 | ✅ hc-border=1024 | n/a |
 | 交互作用禁止(interaction_constraints) | ⬜ 未検証 | ⬜ 未検証 | ✅ 相当(`max_ctr_complexity=1`) | n/a |
 | 四則演算 | ❌ | ❌ | ❌ (-0.00099) | △ `commute/age` 1本のみ |
@@ -76,11 +76,11 @@ CatBoost の 10/20/100 は固定 m を3つ並べているだけで、実質「�
 本データは小数1桁なので実害は出ていないと思われるが、**整数版の方が安全**。
 `fe_all.add_digit_features` は整数版を採用。
 
-### 2-4. 入れ子 TE と単純 fold 内 TE
+### 2-4. Out-of-Fold TE と単純 fold 内 TE
 
-XGB リーダーの実測で **入れ子(学習行に inner-OOF を当てる)方が +0.00108 高い**。
+XGB リーダーの実測で **Out-of-Fold(学習行に inner-OOF を当てる)方が +0.00108 高い**。
 リーク防止ではなく「学習行の楽観バイアス除去」が理由。
-現在は GBDT 3種とも入れ子。RealMLP は sklearn TargetEncoder(cv=5) で実質同等。
+現在は GBDT 3種とも Out-of-Fold。RealMLP は sklearn TargetEncoder(cv=5) で実質同等。
 
 ### 2-5. Count Encoding の fit 範囲
 
@@ -124,7 +124,7 @@ XGB リーダーの実測で **入れ子(学習行に inner-OOF を当てる)方
 **Ordered Target Statistics(順序付き CTR)** を自動で回すからであり、
 「カテゴリとして扱うこと」自体に価値があるわけではない。LightGBM のネイティブ
 categorical split は Fisher の最適分割(カテゴリを target mean 順に並べて分割点を探す)で、
-**低カーデ数値列に対しては数値のまま使う通常の分割とほぼ同じ情報**しか得られない。
+**値の種類（ユニーク値）が少ない数値列に対しては数値のまま使う通常の分割とほぼ同じ情報**しか得られない。
 むしろ順序情報(Age の 25 < 26 < 27)を捨てる分だけ損をしている。
 
 → **catify は CatBoost 固有の武器であり、横展開の対象ではない。**
@@ -143,7 +143,7 @@ XGBoostError: Category index from DataFrame has floating point dtype,
 consider using strings or integers instead.
 ```
 
-`Age` などの低カーデ数値列は float dtype なので、`pd.Categorical` にそのまま包むと
+`Age` などの値の種類（ユニーク値）が少ない数値列は float dtype なので、`pd.Categorical` にそのまま包むと
 **カテゴリ値が float** になり XGBoost が拒否する。`fe_all.catify` を「整数コードに変換してから
 category dtype 化」するよう修正済み(修正後は未実行)。
 
@@ -259,10 +259,10 @@ reference_URL.md は +0.00149 と報告するが、TE 適用後は期待値を�
 RealMLP だけ 13列の厳密値 TE を持っていない(現状は combo 2列のみ)。
 ただし 54列の一括投入は列追加コストが高く、単独枠が無いと完走しない。
 
-**推奨: 高カーディナリティ2列に絞って TE を入れる。**
+**推奨: 値の種類（ユニーク値）が多い2列に絞って TE を入れる。**
 GBDT の feature importance でも TE の効果源は `Annual_Income_USD`(13,214値)と
 `Daily_Commute_km`(805値)に集中していたことが Log.md に記録されている。
-低カーデ5列 + カテゴリ6列の TE は XGB の実測で **±0.00000 と完全に無効**だったので、
+値の種類（ユニーク値）が少ない5列 + カテゴリ6列の TE は XGB の実測で **±0.00000 と完全に無効**だったので、
 最初から外してよい。
 
 - 対象キー: `Annual_Income_USD`, `Daily_Commute_km`, `sk_inc10`, `sk_inc100`, `sk_inc1000`
@@ -296,7 +296,7 @@ B は「無駄列3本を削って、代わりに解像度2つと `auto` 系統�
 - **Smooth Key の解像度も `auto` 系統も、Triple TE が既に捕らえている情報の焼き直しだった**
 
 のいずれか(あるいは両方)。Log.md の「交互作用・多列組み合わせは全滅」「TEの効果源は
-高カーデ数値列に集中」という既存知見と整合的で、**TE 周りの情報はすでに絞り尽くされている**
+値の種類（ユニーク値）が多い数値列に集中」という既存知見と整合的で、**TE 周りの情報はすでに絞り尽くされている**
 可能性が高い。
 
 **残る価値**: スコア上の利得は無いが、`sk_inc_1` の削除は **TE列3本と
@@ -322,7 +322,7 @@ uv run fe_crosstest.py --model cat --folds 1 --n-jobs 7 --lr 0.06 --n-est 1000 -
 
 | # | タスク | 状態 | 優先度 |
 |---|---|---|---|
-| 1 | **RealMLP 厳密値TE(高カーデ2列に絞る版)** | 54列版はCPU競合で未完。絞り込み版は未実行 | **★最優先**・20分(**必ず単独枠**) |
+| 1 | **RealMLP 厳密値TE(値の種類（ユニーク値）が多い2列に絞る版)** | 54列版はCPU競合で未完。絞り込み版は未実行 | **★最優先**・20分(**必ず単独枠**) |
 | 2 | Smooth Key への Count Encoding(LGBM/XGB) | 未実行(既存フラグを立てるだけ) | 中・各10分 |
 | 3 | CatBoost A/B のフル5-fold 再確認 | 1-fold で +0.00005(効果なし判定) | 低 |
 | 4 | LGBM/XGB の Smooth Key 解像度統一 | 未実行。ただし CatBoost で同種の変更が無効だった(§3-4) | **低**(期待値を下方修正) |

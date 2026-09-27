@@ -553,3 +553,18 @@ def add_row_aggregates(tr, te, src_tr, src_te):
         frame["charge_min"] = np.minimum(home, work)
         frame["charge_max"] = np.maximum(home, work)
     return tr, te
+
+
+# ---------------------------------------------------------------------------
+# 重複している列(同じ情報を形だけ変えて持っている列)の一覧
+# ---------------------------------------------------------------------------
+def dedup_columns():
+    """他の列と同じ情報しか持たない列の名前を返す(--dedup で学習から外す)。
+
+    LightGBM 版と同じ考え方。ただし XGBoost はカテゴリ列を整数コード(ordinal)で渡すため、
+    Count はカテゴリの並び順を変える役に立つ。Count は残し、TE の平滑化の重複と digit の重複だけを外す。
+    """
+    lowcard = CATEGORICAL_COLS + LOW_CARD_NUMERIC
+    te_dups = [f"{c}_te{s}" for c in lowcard for s in ("10", "100")]
+    digit_dups = ["Number_of_Cars_Owned_d0", "Environmental_Concern_Level_d0"]
+    return te_dups + digit_dups

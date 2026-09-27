@@ -71,6 +71,15 @@ def build_parser():
     )
     p.add_argument("--tag", default="lgbm")
     p.add_argument(
+        "--lean", action="store_true",
+        help="値の種類（ユニーク値）が少ない数値列は TE だけ残し、カテゴリ列の TE も外す(fe.lean_columns()。--dedup と併用)",
+    )
+    p.add_argument("--drop-feats", default="", help="カンマ区切りで指定した列を学習から外す(エンコーディングの切り分け用)。存在しない列名なら止まる")
+    p.add_argument(
+        "--dedup", action="store_true",
+        help="他の列と同じ情報しか持たない列(fe.dedup_columns())を学習から外す",
+    )
+    p.add_argument(
         "--n_jobs",
         type=int,
         default=-1,
@@ -203,6 +212,9 @@ def main():
         # 補助金と、補助金なしでは効きが横ばいになる3列の組み合わせ(EDA 由来)
         te_keys += [("Subsidy_Available", c) for c in
                     ("Environmental_Concern_Level", "Annual_Income_USD", "Range_Anxiety_Level")]
+    if "te2home" in pats:
+        # EDA で見つかった唯一の交互作用: 自宅充電の可否 × 自宅近くの充電スタンド数
+        te_keys += [("Home_Charging_Possible", "Charging_Stations_Near_Home")]
     if "te2all" in pats:
         te_keys += fe.pair_keys("all")
     if "te2catnum" in pats:
@@ -272,13 +284,30 @@ def main():
             X_va = pd.concat([X_va.reset_index(drop=True), nb_va], axis=1)
             X_te = pd.concat([X_te.reset_index(drop=True), nb_te], axis=1)
 
+        if args.dedup:
+            # 重複している列を外す(平滑化の重複 TE・カテゴリ列の Count・値が同じ digit)
+            drop = [c for c in fe.dedup_columns() if c in X_tr.columns]
+            X_tr, X_va, X_te = (f.drop(columns=drop) for f in (X_tr, X_va, X_te))
+
+        if args.lean:
+            # エンコーディングを絞る(値の種類（ユニーク値）が少ない数値列の Count / digit、カテゴリ列の TE)
+            lean = [c for c in fe.lean_columns() if c in X_tr.columns]
+            X_tr, X_va, X_te = (f.drop(columns=lean) for f in (X_tr, X_va, X_te))
+
+        if args.drop_feats:
+            extra = [c.strip() for c in args.drop_feats.split(",") if c.strip()]
+            missing = [c for c in extra if c not in X_tr.columns]
+            if missing:
+                raise SystemExit(f"--drop-feats に存在しない列: {missing}")
+            X_tr, X_va, X_te = (f.drop(columns=extra) for f in (X_tr, X_va, X_te))
+
         if args.dump_features:
             import feature_catalog
             feature_catalog.dump(
                 args.tag, "LightGBM", X_tr.columns,
                 cat_features=[c for c in X_tr.columns
                               if str(X_tr[c].dtype) == "category"],
-                note=f"patterns={args.patterns} smooths={args.smooths}",
+                note=f"patterns={args.patterns} smooths={args.smooths} dedup={args.dedup} lean={args.lean}",
             )
             return
 

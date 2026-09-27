@@ -69,18 +69,18 @@ LightGBM は3モデル中もっとも高速なため、**FEパターンの探索
 **学習しないので 30 秒程度**で終わる(fold 1 の学習行列を組んだ直後に列名を書いて終了する)。
 
 ```bash
-uv run src/04_train_and_evaluate_lgbm.py --patterns base,te1,cnt1,digit,sk --smooths auto,10,100 \
+uv run src/04_train_and_evaluate_lgbm.py --patterns base,te1,cnt1,digit,sk,te2home --smooths auto,10,100 --dedup --lean \
   --sample 0.02 --folds 1 --dump-features --tag lgbm
 ```
 
 この JSON は、`notebooks/03_feature_engineering.ipynb` で組み上げた列が本番と一致するかを確かめる基準になる。
 `data/` はリポジトリに含めていないため**クローン先では再生成できない**。
-更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **92 列**。
+更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **46 列**(`--dedup` で重複列を、`--lean` で不要なエンコーディングを外し、`te2home` で組み合わせ1列を足した後)。
 
 併せて `src/feature_catalog.py` の **`FUNC_STATUS` も更新する**こと。
 `03_feature_engineering_lgbm.py` は採用した関数だけを置く場所ではなく、**検証して捨てた施策も
 再検証しないための記録として残す**方針なので、どれが本番で生きているかは
-この表だけが知っている。`notebooks/03_feature_engineering.ipynb` の 5-5 節(採否表と本番の列の突き合わせ)はここを読む。不採用にしたら同ノートブック8章の表にも1行足すこと。
+この表だけが知っている。`notebooks/03_feature_engineering.ipynb` の 9 章の末尾(採否表と本番の列の突き合わせ)はここを読む。不採用にしたら同ノートブック8章の表にも1行足すこと。
 - 採用したら `("03_feature_engineering_lgbm", "関数名"): (ADOPTED, "根拠")`
 - 捨てたら `(REJECTED, "なぜ捨てたか")` — 根拠は後の自分が再検証しないためのもの
 - `fd.verify_status()` が `docs/features_*.json` と突き合わせて矛盾を検出する

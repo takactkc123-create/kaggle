@@ -30,7 +30,7 @@ IMPORTANT_COMBOS = [
     ("Age", "Range_Anxiety_Level"),
 ]
 
-# digit features の対象。低カーデ列は既に厳密値の embedding を持つので高カーデ2列に限る
+# digit features の対象。値の種類（ユニーク値）が少ない列は既に厳密値の embedding を持つので値の種類（ユニーク値）が多い2列に限る
 DIGIT_COLS = ["Annual_Income_USD", "Daily_Commute_km"]
 
 # KBinsDiscretizer(quantile) の設定 (yekenot と同一)
@@ -45,6 +45,9 @@ def build_features(
     fit: bool,
     orig: pd.DataFrame | None = None,
     digits: bool = False,
+    ratio: bool = False,
+    km5: bool = False,
+    extra_combos: list | None = None,
 ):
     """yekenot RealMLP カーネルの feature_engineering を再実装した関数.
 
@@ -55,6 +58,10 @@ def build_features(
     category_map : fit=True で学習された変換器を貯めこむ dict (呼び出し側が保持)
     fit : True なら category_map を構築、False なら再利用
     orig : 元データ (EV_Adoption_and_Range_Anxiety_Dataset.csv)。None なら org_mean をスキップ
+    ratio : 通勤距離 ÷ 年齢 の比を作るか。2026-09-27 に不採用(外しても単体 -0.000011 / z=-0.75 で誤差)。
+            公開カーネルからの移植時に入っていたもので、旧構成の再現用に残している
+    km5 : 通勤距離 /5 のキーを作るか。2026-09-27 に不採用(外しても単体 -0.000008 / z=-0.51 で誤差)。
+          通勤距離は1値あたり 576 行あり粗くする必要がなく、1 km 刻みのキー(_cat_)とも重複する
 
     Returns
     -------
@@ -79,14 +86,16 @@ def build_features(
             codes = df[col].map(code_map).fillna(-1).astype("int32")
         df[col] = np.asarray(codes, dtype="int32")
 
-    # ── 四則演算 / 粗い解像度カテゴリ (Smooth Keys) ───────────────────────
-    df["_Daily_Commute_km_/_Age"] = (
-        df["Daily_Commute_km"] / (df["Age"] + 1e-6)
-    ).astype("float32")
+    # ── 四則演算(不採用・既定で無効)/ 粗い解像度カテゴリ (Smooth Keys) ─────
+    if ratio:
+        df["_Daily_Commute_km_/_Age"] = (
+            df["Daily_Commute_km"] / (df["Age"] + 1e-6)
+        ).astype("float32")
     df["Income_/_100_floor_"] = np.floor(df["Annual_Income_USD"] / 100.0).astype("int64")
     df["Income_/_1000_floor_"] = np.floor(df["Annual_Income_USD"] / 1000.0).astype("int64")
     df["Income_/_10000_floor_"] = np.floor(df["Annual_Income_USD"] / 10000.0).astype("int64")
-    df["Daily_km_/_5_floor_"] = np.floor(df["Daily_Commute_km"] / 5.0).astype("int64")
+    if km5:
+        df["Daily_km_/_5_floor_"] = np.floor(df["Daily_Commute_km"] / 5.0).astype("int64")
 
     # ── 数値列の floor をカテゴリ化 (厳密値に近い高解像度キー) ─────────────
     for col in num_cols:
@@ -101,7 +110,7 @@ def build_features(
             codes = pd.Series(floored).map(code_map).fillna(-1).astype("int32")
         df[cat_name] = np.asarray(codes, dtype="int32")
 
-    # ── digit features (高カーデ2列の各桁をカテゴリとして embedding に渡す) ──
+    # ── digit features (値の種類（ユニーク値）が多い2列の各桁をカテゴリとして embedding に渡す) ──
     #    全列が小数1桁なので10倍して整数化し、浮動小数の丸め誤差を避ける。
     #    定数になる桁は fit 時に落とし、test でも同じ列集合を使う。
     if digits:
@@ -164,7 +173,7 @@ def build_features(
 
     # ── 交互作用カテゴリ (fold 内 TE の対象) ──────────────────────────────
     combo_names = []
-    for cols in IMPORTANT_COMBOS:
+    for cols in IMPORTANT_COMBOS + list(extra_combos or []):
         combo_name = "_".join(cols) + "_"
         combo_names.append(combo_name)
         combo_series = df[cols[0]].astype(str)
@@ -185,16 +194,16 @@ def build_features(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 厳密値 Target Encoding(高カーデ2列に絞る版, 2026-09-18)
+# 厳密値 Target Encoding(値の種類（ユニーク値）が多い2列に絞る版, 2026-09-18)
 #
 # 背景: GBDT 3種は「13列の厳密値TE + Smooth Keys の Triple TE」で各 +0.003 前後の
 # 改善を得ているが、RealMLP には combo TE (income×RangeAnxiety, age×RangeAnxiety の
 # 2列のみ, 04_train_and_evaluate_realmlp.py 側で適用) しか入っていなかった。
 # fe_results_all.md の分析により、54列一括投入はCPU競合で完走せずコストも高いため、
-# 効果源が確実な高カーディナリティ2列 + その Smooth Keys 3本 = 5キー に絞り込む。
+# 効果源が確実な値の種類（ユニーク値）が多い2列 + その Smooth Keys 3本 = 5キー に絞り込む。
 # smooth を auto/10/100 の Triple で同時投入 -> 5キー × 3 smooth = 15列。
 #
-# リーク対策: 入れ子CV (inner StratifiedKFold(5)) を outer fold 内で回し、学習行には
+# リーク対策: Out-of-Fold (inner StratifiedKFold(5)) を outer fold 内で回し、学習行には
 # inner-OOF 値、valid/test には学習fold全体の統計を当てる (fe_lgbm/fe_all と同方式)。
 # ══════════════════════════════════════════════════════════════════════════════
 HIGHCARD_TE_COLS = ["Annual_Income_USD", "Daily_Commute_km"]
@@ -251,7 +260,7 @@ def target_encode_highcard(
     n_inner: int = 5,
     seed: int = 42,
 ):
-    """リークフリー入れ子 TE。戻り値 (te_fit, [te_other, ...]).
+    """リークフリーの Out-of-Fold TE。戻り値 (te_fit, [te_other, ...]).
 
     keys_fit     : 現在の outer fold の学習行のキーフレーム
     other_frames : 同じ統計を当てるフレーム (通常 [valid_keys, test_keys])

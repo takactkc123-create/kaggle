@@ -19,18 +19,18 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 
 | 項目 | 値 |
 |---|---|
-| 最良CV(アンサンブル) | **0.94623** |
+| 最良CV(アンサンブル) | **0.946245**(最終提出 D) |
 | 最良 Public LB | **0.94645** |
 | 順位(2026-09-23 時点の暫定) | **320位 / 2,732チーム(上位11.7%)** |
-| 提出構成 | **LightGBM 1/3 + XGBoost 1/3 + RealMLP 1/3**(rank平均) |
+| 提出構成 | **LightGBM 1/3 + XGBoost 1/3 + RealMLP 1/3**(rank平均)。最終提出は D と元の構成の2本 |
 | LB1位 | 0.94945(2位は 0.94672)。**1位だけ 0.0027 離れている**。Public は test の20%のみで算出されるため、この幅は Private で縮む可能性がある |
 
 | モデル | ベースライン | 現在 |
 |---|---|---|
 | LightGBM | 0.94123 | **0.94610**(アンサンブル採用) |
-| XGBoost | 0.94124 | **0.94608**(アンサンブル採用) |
-| RealMLP | — | **0.94589**(アンサンブル採用。多様性の供給源) |
-| CatBoost | 0.94156 | 0.94589(**重み0**。他GBDTと同質で選ばれない) |
+| XGBoost | 0.94124 | **0.94609**(アンサンブル採用) |
+| RealMLP | — | **0.94590**(アンサンブル採用。多様性の供給源) |
+| CatBoost | 0.94156 | 0.94592(**重み0**。他GBDTと同質で選ばれない) |
 | Lookup Transformer | — | 0.94425(**不採用**。相関0.982と理想的だが入れると有意に悪化) |
 
 **改善の内訳**: FE +0.004 / 収束確認 +0.0008 / 列サブサンプリング +0.0002 / RealMLP追加 +0.0005。
@@ -39,17 +39,17 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 ## データ特性(調査済み・再調査不要)
 
 - train 668,665行 / test 286,571行、**欠損値ゼロ**。目的変数 `Will_Buy_EV` は Yes 17.5% / No 82.5%。
-- 数値7列(id除く)・カテゴリ6列。カーディナリティは以下の通り:
+- 数値7列(id除く)・カテゴリ6列。値の種類（ユニーク値）の数は以下の通り:
 
 | 列 | nunique | 種別 |
 |---|---|---|
-| Age | 45 | 数値(低カーデ) |
-| Annual_Income_USD | 13,214 | 数値(高カーデ) |
-| Daily_Commute_km | 805 | 数値(中カーデ) |
-| Number_of_Cars_Owned | 4 | 数値(低カーデ) |
-| Charging_Stations_Near_Home | 15 | 数値(低カーデ) |
-| Charging_Stations_Near_Work | 20 | 数値(低カーデ) |
-| Environmental_Concern_Level | 5 | 数値(低カーデ) |
+| Age | 45 | 数値(値の種類（ユニーク値）が少ない) |
+| Annual_Income_USD | 13,214 | 数値(値の種類（ユニーク値）が多い) |
+| Daily_Commute_km | 805 | 数値(値の種類（ユニーク値）が中程度) |
+| Number_of_Cars_Owned | 4 | 数値(値の種類（ユニーク値）が少ない) |
+| Charging_Stations_Near_Home | 15 | 数値(値の種類（ユニーク値）が少ない) |
+| Charging_Stations_Near_Work | 20 | 数値(値の種類（ユニーク値）が少ない) |
+| Environmental_Concern_Level | 5 | 数値(値の種類（ユニーク値）が少ない) |
 | Gender / City_Type / Current_Car_Type | 3 / 3 / 4 | カテゴリ |
 | Home_Charging_Possible / Subsidy_Available / Range_Anxiety_Level | 2 / 2 / 3 | カテゴリ |
 
@@ -62,7 +62,7 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
   **「数値列も含めた全列を厳密な値のまま Target Encoding」** した施策のみが CV AUC +0.006 以上という
   桁違いの改善を生んだ。Playground の合成データはラベルが特徴量の厳密値に紐づく確率から
   サンプリングされているため、この構造が再現する可能性が高い。
-- 本コンペでも低カーディナリティ列が多く、**厳密値TE・カテゴリ交互作用TE・Count Encoding** が
+- 本コンペでも値の種類（ユニーク値）が少ない列が多く、**厳密値TE・カテゴリ交互作用TE・Count Encoding** が
   最有力候補。四則演算FEは「やるべきだが期待値は低い」という前提で臨むこと。
 - TEは必ず **fold内でfitしてvalidationに適用**(リーク厳禁)。OOF AUCが不自然に跳ねたらリークを疑う。
 
@@ -127,11 +127,18 @@ docs/features_<tag>.json  # 各モデルが使っている列名(--dump-features
 - `04_train_and_evaluate_<model>.py` に `--dump-features` を付けると、**fold 1 の学習行列を組み上げた直後に
   列名を `docs/features_<tag>.json` へ書いて終了する**(学習しない)。本番と同じコードパスを通るので
   列の取りこぼしがない。**FE を変えたら必ず再生成すること**(コマンドは README 参照)。
-  現行の列数は LightGBM 92 / XGBoost 93 / CatBoost 80 / RealMLP 38。
+  現行の列数は LightGBM 46 / XGBoost 69 / CatBoost 43 / RealMLP 38。
+  GBDT 3種は `--dedup` で、他の列と同じ情報しか持たない列(`dedup_columns()`)を外している(2026-09-27)。
+  LightGBM・CatBoost はさらに `--lean` で、値の種類（ユニーク値）が少ない数値列のエンコーディングを TE だけに絞っている(`lean_columns()`)。
+  XGBoost は絞ると悪化傾向(z=-2.4〜-2.6)だったので適用しない。
+  最終構成(D)では LightGBM・RealMLP に「自宅充電の可否 × 自宅スタンド数」の組み合わせを足している
+  (`te2home` / `--combo-home`。採用基準には届かないが CV 最高のため。2026-09-27)。
+  **最終提出は D(CV 0.946245 / Public 0.94640)と、元の構成 ①(CV 0.946234 / Public 0.94645)の2本。**
+  ① のコードはタグ `final-original-20260927`、成果物は `backup_final_original_20260927/`。
 
 - **`03_feature_engineering_<model>.py` は採用した関数だけを置く場所ではない。** 検証して捨てた施策も
   再検証しないための記録として残す。どれが本番で生きているかは `src/feature_catalog.py` の
-  **`FUNC_STATUS`** が持つ(現在 〇28 / ✖30 / 補助8 の計66関数)。
+  **`FUNC_STATUS`** が持つ(現在 〇33 / ✖30 / 補助8 の計71関数)。
   **FEを採用・不採用にしたらこの表も更新すること。**
   `fd.verify_status()` が `docs/features_*.json` と突き合わせて矛盾を検出する。
 
@@ -173,7 +180,7 @@ fold 分割が全モデル共通(`random_state=42`)なので、2つの予測の�
 
 | 分類 | 施策 |
 |---|---|
-| 特徴量 | 四則演算(全パターン) / 交互作用TE(2〜13列) / 行フィンガープリント(全行ユニークで原理的に不可) / 元データ追加 / エンコード方式の変更 / **列削減(単変量で効かない列を消すと -0.00044。`te_Age` が importance 5位)** / **補助金との組み合わせ(TE・積とも誤差。log-odds では足し算の関係)** / **年収の近傍統計(GBDT は誤差、RealMLP は単体のみ改善しアンサンブル ±0)** |
+| 特徴量 | 四則演算(全パターン) / 交互作用TE(2〜13列) / 行フィンガープリント(全行ユニークで原理的に不可) / 元データ追加 / エンコード方式の変更 / **列削減(単変量で効かない列を消すと -0.00044。`te_Age` が importance 5位)** / **補助金との組み合わせ(TE・積とも誤差。log-odds では足し算の関係)** / **年収の近傍統計(GBDT は誤差、RealMLP は単体のみ改善しアンサンブル ±0)** / **RealMLP の通勤距離÷年齢・通勤距離 /5 のキー(公開カーネルから移植したまま未検証だった。外しても誤差で 2026-09-27 に削除)** |
 | パラメータ | `num_leaves`(**`max_depth=5` が先に制約になっていた**) / CatBoost の列サンプリング(対称木のため有害) / RealMLP のエポック増(スケジュール連動) |
 | モデル追加 | Lookup Transformer(相関0.982でも有意に悪化) |
 | アンサンブル | 非有意な構成の採用(CV +0.000009 → LB -0.00002 で実証) / seed平均 |
