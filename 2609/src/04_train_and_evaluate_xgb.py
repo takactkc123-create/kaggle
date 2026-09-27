@@ -184,6 +184,13 @@ PATTERNS = {
         te_smoothings=("auto", 10.0, 100.0), smooth_keys=True, digits=True,
         te_inter=[("Home_Charging_Possible", "Charging_Stations_Near_Home")],
     ),
+    # 2026-09-28: 列を絞った後の構成で、補助金 × 環境意識・収入・航続距離の不安を再検証
+    "tte_sk_dig_subsidy": _p(
+        enc="ord", te_cols=ALL_COLS, te_nested=True, ce_cols=ALL_COLS,
+        te_smoothings=("auto", 10.0, 100.0), smooth_keys=True, digits=True,
+        te_inter=[("Subsidy_Available", c) for c in
+                  ("Environmental_Concern_Level", "Annual_Income_USD", "Range_Anxiety_Level")],
+    ),
     # --- 2026-09-21: 誤差として見送った「符号がプラス」の施策の再検証 ---
     # One-Hot は単体で +0.00005 だった。本番構成(Triple TE + digit)の上で測り直す
     "tte_sk_dig_ohe": _p(

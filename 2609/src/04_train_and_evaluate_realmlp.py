@@ -602,6 +602,14 @@ def main():
         help="自宅充電の可否 × 自宅スタンド数を組み合わせキーに足す(EDA の交互作用の検証用)",
     )
     ap.add_argument(
+        "--combo-subsidy", action="store_true",
+        help="補助金 × 環境意識・収入・航続距離の不安の3組を組み合わせキーに足す(2026-09-28 の再検証用)",
+    )
+    ap.add_argument(
+        "--te-income", action="store_true",
+        help="年収の値ごとの購入率を train だけで fold 内に作る(元データの購入率の代わり。2026-09-28 の検証用)",
+    )
+    ap.add_argument(
         "--km5", action="store_true",
         help="通勤距離 /5 のキー(Daily_km_/_5_floor_)を足す。2026-09-27 に不採用。旧構成の再現用",
     )
@@ -637,7 +645,11 @@ def main():
     num_cols = X.select_dtypes(exclude=["object"]).columns.tolist()
 
     category_map = {}
-    extra_combos = [("Home_Charging_Possible", "Charging_Stations_Near_Home")] if args.combo_home else None
+    extra_combos = [("Home_Charging_Possible", "Charging_Stations_Near_Home")] if args.combo_home else []
+    if args.combo_subsidy:
+        extra_combos += [("Subsidy_Available", c) for c in
+                         ("Environmental_Concern_Level", "Annual_Income_USD", "Range_Anxiety_Level")]
+    extra_combos = extra_combos or None
     t0 = time.time()
     X, new_cat_cols, new_num_cols, combo_names = build_features(
         X, cat_cols, num_cols, category_map, fit=True, orig=orig, digits=args.digits, ratio=args.ratio, km5=args.km5, extra_combos=extra_combos
@@ -647,6 +659,9 @@ def main():
     )
     cat_cols = cat_cols + new_cat_cols
     num_cols = num_cols + new_num_cols
+    if args.te_income:
+        # 年収そのもの(整数コード化した列)も fold 内 Target Encoding の対象にする
+        combo_names = combo_names + ["Annual_Income_USD_cat_"]
     print(f"FE done in {time.time() - t0:.0f}s | cat={len(cat_cols)} num={len(num_cols)} "
           f"| X={X.shape} X_test={X_test.shape}", flush=True)
 
