@@ -468,6 +468,13 @@ def add_income_neighborhood(fit_income, fit_y, other_incomes, radii=NEIGHBOR_RAD
     return fit_frame, others
 
 
+
+# 元データでの年収ごとの購入率を列にする(RealMLP の _Annual_Income_USD_mean_target_orig と同じ作り方。2026-09-29 に GBDT で検証)
+def orig_income_rate(df: pd.DataFrame, orig: pd.DataFrame) -> np.ndarray:
+    """元データ(train・test とは別のデータ)で計算するのでリークしない。元データにない年収は、元データ全体の購入率で埋める。"""
+    return (df["Annual_Income_USD"].map(orig.groupby("Annual_Income_USD")[TARGET].mean())
+            .fillna(orig[TARGET].mean()).astype("float32").to_numpy())
+
 # ============================================================================
 # 不採用(記録)— 各モデルの 03_feature_engineering_<model>.py から移した関数
 #   本番では使わない。再検証しないための記録として残す。名前の末尾はもとのモデル。
