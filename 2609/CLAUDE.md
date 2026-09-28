@@ -119,7 +119,7 @@ fold 分割が共通なので共通のノイズが差し引きで消え、判別
 | モデル追加 | Lookup Transformer(相関 0.982 と最も非相関だが、単体差 0.0019 が埋まらず有意に悪化) |
 | アンサンブル | 非有意な構成の採用 / seed 平均 / CatBoost の重みを増やす |
 
-残る選択肢(Optuna・feature importance の再確認)は、いずれも期待値が誤差水準。
+残る選択肢のうち Optuna は期待値が誤差水準。feature importance は 2026-09-28 に確認した(`src/feature_importance.py`、04 のノートブック 7 章。補助金と環境意識で重要度の 7〜9 割、次が年収の Target Encoding)。
 
 ## 作業のルール
 

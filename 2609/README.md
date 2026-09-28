@@ -54,7 +54,8 @@ kaggle/                                  # リポジトリのルート(コンペ
     │   ├── 05_hyperparameter_tuning.py
     │   ├── 06_ensemble_hill_climbing.py
     │   ├── 07_compare_predictions.py
-    │   └── feature_catalog.py                  # 採否表(FUNC_STATUS)と列名の JSON 出力
+    │   ├── feature_catalog.py                  # 採否表(FUNC_STATUS)と列名の JSON 出力
+    │   └── feature_importance.py               # Feature Importance(特徴量の重要度)の確認
     ├── notebooks/                       # 工程を追える説明版(01〜06)
     ├── docs/
     │   ├── pipeline_overview.png        # プロセス全体像の図
@@ -69,7 +70,7 @@ kaggle/                                  # リポジトリのルート(コンペ
     ├── datacheck/ 【ignore】             # EDA の図
     ├── oof/ 【ignore】                   # oof_<model>.npy / pred_<model>.npy(アンサンブル用)
     ├── submit/ 【ignore】                # submission_<model>.csv
-    ├── importance/ 【ignore】            # feature importance の棒グラフ
+    ├── importance/ 【ignore】            # feature importance の棒グラフと値(CSV)
     ├── experiments_rejected/ 【ignore】  # 不採用の実験成果物(記録として保持)
     ├── backup_*/ 【ignore】              # バックアップ
     ├── catboost_info/ 【ignore】         # CatBoost が学習時に書き出すログ
@@ -97,6 +98,7 @@ kaggle/                                  # リポジトリのルート(コンペ
 | ⑥ | Ensemble(アンサンブル) | `06_ensemble_hill_climbing.py` | `06_ensemble.ipynb` | `submit/submission_hillclimb.csv` |
 | ⑦ | Paired DeLong Test(対応のある DeLong 検定) | `07_compare_predictions.py` | (`06_ensemble.ipynb` に含む) | 採否判定 |
 | — | 補助 | `feature_catalog.py` | — | 本番で使っている関数の一覧(`FUNC_STATUS`)と列名の JSON 出力 |
+| — | 補助 | `feature_importance.py` | `04_train_and_evaluate.ipynb` の 7 章 | Feature Importance(特徴量の重要度)の上位の列。本番の成果物には書き込まない |
 | — | Claude Code | `.claude/agents/*.md` | — | `docs/fe_results_*.md` |
 
 | モデル | ② Baseline | ④ 最終構成 | 列数 |
@@ -121,7 +123,7 @@ kaggle/                                  # リポジトリのルート(コンペ
 | `notebooks/01_eda.ipynb` | ① | データの素性、値の種類（ユニーク値）の数、値ごとの購入率 |
 | `notebooks/02_baseline.ipynb` | ② | 3モデルのベースライン(共通の CV ループ) |
 | `notebooks/03_feature_engineering.ipynb` | ③ | read_csv から特徴量の作成までを **GBDT 共通 → GBDT モデル別 → RealMLP** の順にノートブック内で実行し、意図と根拠を説明。本番の .py と値まで一致することも確認。不採用にした施策の一覧も載せる |
-| `notebooks/04_train_and_evaluate.ipynb` | ④ | 4モデルを本番と同じ特徴量・設定で上から順に学習し、本番の OOF と一致することを確認(約75分) |
+| `notebooks/04_train_and_evaluate.ipynb` | ④ | 4モデルを本番と同じ特徴量・設定で上から順に学習し、本番の OOF と一致することを確認(約75分)。7 章で Feature Importance を横向き棒グラフで確認 |
 | `notebooks/05_hyperparameter_tuning.ipynb` | ⑤ | Hyperparameter Tuning の設計と所要時間の見積もり + 実行した 18 試行の結果(すべて誤差か悪化。計画 24 のうち 6 本は打ち切り) |
 | `notebooks/06_ensemble.ipynb` | ⑥⑦ | ブレンドの再現。相関の確認と DeLong 検定による採否判定まで |
 
@@ -267,6 +269,17 @@ uv run src/04_train_and_evaluate_realmlp.py --combo-home --te-income --dump-feat
 
 **Feature Engineering を変えたら再生成すること。** JSON は生成物だが `data/` を含めていないためクローン先では作り直せない。ノートブックの表示元になるのでリポジトリに含めている。
 
+### Feature Importance(特徴量の重要度)を確認する
+
+モデルが予測を作るときに、どの列をどれだけ使ったかを確かめる。本番と同じ特徴量・パラメータで fold 1 だけを学習し直し(本番の fold 1 と同じモデルになる)、重要度(gain の割合)の上位の列を print する。**本番の予測・提出ファイルには書き込まない。**
+
+```bash
+uv run src/feature_importance.py                  # LightGBM・XGBoost・CatBoost の上位 10 列(約 7 分)
+uv run src/feature_importance.py lgbm --top 20    # モデルと表示する列数を指定
+```
+
+図と、読み取れること(重要度は相関ではない)は `notebooks/04_train_and_evaluate.ipynb` の 7 章。RealMLP は木のモデルのような重要度を持たないので対象外。
+
 ## ⑤ Hyperparameter Tuning(ハイパーパラメータ調整)
 
 学習率や木の深さなど、学習前に決めておく設定値(ハイパーパラメータ)を変えて、より良い組み合わせを探す工程。
@@ -348,6 +361,8 @@ kaggle competitions submit -c playground-series-s6e9 -f submit/submission_hillcl
 ## ⑦ Paired DeLong Test(対応のある DeLong 検定)
 
 2つの予測の AUC の差が偶然か本物かを統計的に判定し、変更を採用するかを決める工程。学習はせず、保存済みの予測を読むだけ。
+
+> **DeLong 検定とは**: DeLong 検定は、同じデータに対する2つの予測の AUC の差が、偶然の揺れで説明できる程度かを調べる統計的な検定。差が偶然でないと言えるときだけ変更を採用するために行う。
 
 ```bash
 uv run src/07_compare_predictions.py lgbm lgbm_shallow      # 2つを比較
