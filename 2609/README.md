@@ -1,14 +1,26 @@
 # Kaggle Playground Series S6E9 — Predicting Electric Vehicle Purchases
 
-EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二値分類コンペ。評価指標は **ROC-AUC**。
+## コンペ概要
 
-- コンペ: https://www.kaggle.com/competitions/playground-series-s6e9
-- **最良スコア: CV 0.946264(最終提出)/ Public LB 0.94645(元の構成)**
-- 順位は **320位 / 2,732チーム(上位11.7%)** — **2026-09-23 時点の暫定値**。締切は 2026-09-30
-  (上位15%のラインは 409位。参加チームが増え続けるため、**スコアが同じでも順位は日々下がる**)
-- 方針・ルール: [CLAUDE.md](CLAUDE.md)
-- 詳細な実験ログ・外部調査の記録はローカルで管理(公開リポジトリには含めていません)
-- クローンして再現する手順は「[セットアップ](#セットアップクローンから再現まで)」
+EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二値分類コンペ。
+評価指標は **ROC-AUC(0~1)**。 ※ 1 に近いほど精度がよく、順位が高い。
+
+- コンペ: https://www.kaggle.com/competitions/playground-series-s6e9(締切 2026-09-30)
+- データ: 顧客の属性・通勤距離・充電環境・補助金の有無など 13 列。train 668,665 行 / test 286,571 行
+
+## 結果
+
+最終提出の 2 本(2026-09-28 時点。**Public LB は test の 20% だけで採点**され、最終順位は残り 80% の Private LB で決まる)。
+
+| 最終提出 | CV | Public LB | 順位(Public) | 上位 |
+|---|---|---|---|---|
+| 元の構成 | 0.946234 | **0.94645** | **459位 / 3,295チーム** | **13.9%** |
+| 現在の構成(CV 最高) | **0.946264** | 0.94642 | 537〜553位相当 | 16.3〜16.8% |
+
+- Public LB の順位は、これまでの全提出のうち Public が最も良いもの(元の構成)で付く。「現在の構成」の順位は、同じ LB に照らした相当位置
+- 締切後の最終順位(Private LB)は、最終提出に選んだ 2 本のうち良い方で付く
+- 参加チームが増え続けるため、**スコアが同じでも順位は日々下がる**
+  (320位 / 2,732チーム(09-23)→ 459位 / 3,295チーム(09-28))
 
 ## プロセス全体像
 
@@ -21,6 +33,56 @@ EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二�
                                             ⑤ Hyperparameter Tuning
                           ⑦ Paired DeLong Test … ③〜⑥ の変更を採用するかを判定
 ```
+
+### ディレクトリ構成
+
+【ignore】は `.gitignore` の対象(リポジトリに含めない)。データと実行成果物は再現できるため、記録類はローカルで管理するため除外している。
+詳細な実験ログ(`Log.md`)や外部調査の記録も、ローカルだけで管理している。
+
+```
+kaggle/                                  # リポジトリのルート(コンペごとのフォルダ)
+└── 2609/                                # このコンペ
+    ├── README.md
+    ├── CLAUDE.md                        # Claude Code への方針・規約
+    ├── pyproject.toml / uv.lock / .python-version   # 環境(ライブラリの版を固定)
+    ├── src/                             # 本番パイプライン
+    │   ├── 01_eda.py
+    │   ├── 02_baseline_<model>.py
+    │   ├── 03_feature_engineering_<model>.py   # 本番で使う特徴量の関数
+    │   ├── 03_feature_engineering_all.py       # 横断カタログ + 不採用の関数の記録
+    │   ├── 04_train_and_evaluate_<model>.py
+    │   ├── 05_hyperparameter_tuning.py
+    │   ├── 06_ensemble_hill_climbing.py
+    │   ├── 07_compare_predictions.py
+    │   └── feature_catalog.py                  # 採否表(FUNC_STATUS)と列名の JSON 出力
+    ├── notebooks/                       # 工程を追える説明版(01〜06)
+    ├── docs/
+    │   ├── pipeline_overview.png        # プロセス全体像の図
+    │   ├── eda_results.md               # EDA の結果
+    │   ├── fe_results_<model>.md / fe_results_all.md   # 各担当の検証記録
+    │   ├── features_<model>.json        # 本番で使っている列名(--dump-features で生成)
+    │   ├── hyperparameter_tuning_results.csv   # ⑤ の試行ごとの記録(05 が書き、05 の --report が読む)
+    │   └── reference_URL.md 【ignore】   # 参考カーネルの調査結果
+    ├── .claude/agents/                  # サブエージェントの定義
+    │   └── lookup-transformer-lead.md 【ignore】
+    ├── data/ 【ignore】                  # train.csv / test.csv / sample_submission.csv / 元データ
+    ├── datacheck/ 【ignore】             # EDA の図
+    ├── oof/ 【ignore】                   # oof_<model>.npy / pred_<model>.npy(アンサンブル用)
+    ├── submit/ 【ignore】                # submission_<model>.csv
+    ├── importance/ 【ignore】            # feature importance の棒グラフ
+    ├── experiments_rejected/ 【ignore】  # 不採用の実験成果物(記録として保持)
+    ├── backup_*/ 【ignore】              # バックアップ
+    ├── catboost_info/ 【ignore】         # CatBoost が学習時に書き出すログ
+    ├── kernels/ 【ignore】               # 取得した公開カーネル
+    ├── kaggle_kernel_*/ 【ignore】       # Kaggle Notebook で動かしたモデル
+    ├── tools/ 【ignore】                 # 図の作成などの補助スクリプト
+    ├── .venv/ 【ignore】                 # uv が作る仮想環境
+    └── Log.md / nippo.md / research.md / prompt.md / main.py / fe_results_lookup.md 【ignore】   # 実験ログなどの記録
+```
+
+---
+
+## 【ソースコード】
 
 **ファイル名の先頭の番号が工程の順番**。`src/` が本番、`notebooks/` は同じ番号の工程を上から追える説明版
 (03・04 は `src/` と結果が一致することをノートブックの中で確認している)。
@@ -45,6 +107,8 @@ EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二�
 | RealMLP | — | 0.94603 | 39 |
 | **アンサンブル**(LightGBM・XGBoost・RealMLP の順位平均) | — | **0.946264** | — |
 
+> **GBDT**(Gradient Boosting Decision Tree:勾配ブースティング決定木)は、決定木を少しずつ足して誤りを補正していくモデルの総称。このリポジトリでは **LightGBM・XGBoost・CatBoost の3つのモデル**を指す。
+
 ## Notebooks
 
 工程を上から読んで追えるようにしたもの。リポジトリのルートから起動しても、`notebooks/` から
@@ -68,8 +132,6 @@ Jupyter で開く際は、カーネルに **`.venv` の Python** を選ぶこと
 関数をノートブックへ移さない理由は `notebooks/04_train_and_evaluate.ipynb` の冒頭に記載している
 (要点: 本番の正本を1か所に保つため。Target Encoding は fold ごとに作り直すので、列名だけ渡しても `src/` の関数は必要になる)。
 
----
-
 ## ① EDA(Exploratory Data Analysis:探索的データ分析)
 
 モデルを作る前にデータの分布・欠損・目的変数との関係を調べ、どんな特徴量が効きそうかの仮説を立てる工程。
@@ -92,7 +154,7 @@ uv run src/01_eda.py
 | `08_target_rate_by_numeric.png` | 数値の値ごとの購入率 |
 | `09_train_test_distribution.png` | train と test の分布比較 |
 
-**主な所見**: train 668,665行 / test 286,571行、欠損なし、購入率 17.5%。
+**主な情報**: train 668,665行 / test 286,571行、欠損なし、購入率 17.5%。
 `Environmental_Concern_Level` の効きが圧倒的(レベル1で約1% → レベル5で約52%)。
 **年収は 13,214 種類の値**を持ち、木の既定ビン数(255)では値ごとの違いが潰れる
 → 後の厳密値 Target Encoding とビン数引き上げにつながる最重要の所見。
@@ -114,19 +176,21 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 
 | モデル | OOF AUC<br>数値列のみ(7列) | OOF AUC<br>数値列 + カテゴリ列(13列) | Public LB<br>(13列) | 順位(このスコアなら現時点で) |
 |---|---|---|---|---|
-| LightGBM | 0.88380 | 0.94123 | 0.94093 | 2274位(上位83%) |
-| XGBoost | 0.88362 | 0.94124 | 0.94152 | 1877位(上位69%) |
-| CatBoost | 0.88398 | 0.94156 | 0.94170 | 1637位(上位60%) |
+| LightGBM | 0.88380 | 0.94123 | 0.94093 | 2743位(上位83.2%) |
+| XGBoost | 0.88362 | 0.94124 | 0.94152 | 2277位(上位69.1%) |
+| CatBoost | 0.88398 | 0.94156 | 0.94170 | 2004位(上位60.8%) |
 
 **カテゴリ列を加えるだけで、3モデルとも約 +0.057。** `Subsidy_Available` と `Range_Anxiety_Level` は
 数値列より購入率の差がはるかに大きく、落とすとこの情報をまるごと失う。以降は13列を出発点にする。
 
-> 順位は **2026-09-23 時点の暫定値**(2,732チーム)で、そのスコアが今の LB で何位に相当するかを
+> 順位は **2026-09-28 時点**(3,295チーム)の Public LB で、そのスコアが何位に相当するかを
 > 示したもの。提出当時の順位ではない。
 
 ## ③ Feature Engineering(特徴量エンジニアリング)
 
 元の列から、モデルが学びやすい形の新しい列(特徴量)を作る工程。ここでは作り方を関数として定義するだけで、実行はしない。
+
+> **RealMLP について**: RealMLP は数値を埋め込みに変えて学ぶニューラルネットワーク。GBDT と予測の間違え方が違うため、アンサンブルの多様性を補う目的で③から導入。前処理と設定が複雑で、ベースラインには含めない。
 
 | モデル | ③ Feature Engineering の関数 |
 |---|---|
@@ -266,7 +330,7 @@ hill climbing で足し合わせる。選ばれた回数がそのまま重みに
 | **現在の構成**(D + RealMLP に年収の Target Encoding を train だけで追加。2026-09-28) | **0.946264** | 0.94642 |
 | (参考)D(置き換え前。LightGBM・RealMLP に自宅充電 × 自宅スタンド数を追加。タグ `best-20260927-d`) | 0.946245 | 0.94640 |
 | 元の構成(タグ `final-original-20260927`) | 0.946234 | **0.94645** |
-(**320位 / 2,732チーム**、2026-09-23 時点の暫定値)
+(**459位 / 3,295チーム**、2026-09-28 時点。上の「結果」を参照)
 
 > ⚠ **hill climbing の出力をそのまま信じないこと。** 貪欲法は OOF 上の偶然を拾う。
 > CV +0.000009(z=+1.57、有意でない)の構成を提出したところ、LB では -0.00002 と逆に動いた。
@@ -305,11 +369,37 @@ z=+8.48 で誤差でないことが確定した。
 
 ---
 
+## 提出ごとの推移
+
+| 提出 | CV | Public LB | 順位(現時点のLBでの相当位置) |
+|---|---|---|---|
+| CatBoost 単体(ベースライン) | 0.94156 | 0.94170 | 2004位(上位60.8%) |
+| Feature Engineering + 収束確認 | 0.94555 | 0.94576 | 1218位(上位37.0%) |
+| Triple Target Encoding + digit | 0.94604 | 0.94622 | 893位(上位27.1%) |
+| **列サブサンプリング + 3モデル(元の構成。最終提出)** | **0.946234** | **0.94645** | **432位(上位13.1%)** |
+| **現在の構成(列の整理 + 交互作用 + RealMLP の年収 Target Encoding。最終提出)** | **0.946264** | 0.94642 | 537位(上位16.3%) |
+
+> 順位はいずれも **2026-09-28 時点**(3,295チーム)の Public LB に照らした相当位置(そのスコアより上のチーム数 + 1)で、
+> 提出当時の順位ではない。
+> **実際の順位は 459位。** 0.94645 は 34チームが並ぶ同点帯(432〜465位)で、
+> Kaggle は同点を提出時刻の早い順に並べるため、スコア相当位置より後ろになる。
+> 参加チームは増え続けるため、同じスコアでも順位は日々下がっていく(09-23 時点では 320位 / 2,732チーム)。
+
+## この取り組みで効いたこと
+
+1. **厳密値 Target Encoding**(+0.003)— 前コンペの教訓がそのまま再現した最大の要因
+2. **収束の確認**(+0.0008)— Feature Engineering で特徴量を13→39列に増やしたのに木の本数がデフォルト100のままだった
+3. **列サブサンプリング**(+0.0002)— 外部調査で見つけた見落とし。引数を足すだけ
+4. **異種モデル(RealMLP)の追加** — GBDT同士は相関0.99で同質化しており、多様性の供給源になった
+5. **paired DeLong 検定** — 従来なら誤差として捨てていた改善を拾えるようになった
+
+**効かなかったこと**: 四則演算・交互作用など「人間が意味を考えて作った特徴量」は全滅だった。
+合成データの生成過程にそうした関係がなかったため。
 ## Claude Code の構成
 
 Claude Code のサブエージェント(役割ごとに指示を分けた AI の担当者)を置き、モデルごとに改善を競わせ、支援役が横展開と情報収集を担う。
 
-定義は `.claude/agents/`、全体の方針は `CLAUDE.md`。
+定義は `.claude/agents/`、AI による設計・検証の方針は [CLAUDE.md](CLAUDE.md) にまとめている。
 
 | エージェント | 役割 | 記録 |
 |---|---|---|
@@ -320,51 +410,6 @@ Claude Code のサブエージェント(役割ごとに指示を分けた AI の
 - モデル担当の審査は単体 AUC だけでなく、**他モデルとの非相関性**(アンサンブルへの貢献度)も見る
 - 支援役(`fe-lead` / `research-lead`)の評価は「他モデルがどれだけ伸びたか」
 - 他モデルのファイルは編集しない。Kaggle への提出は指揮官(ユーザー)の承認後のみ
-
-## ディレクトリ構成
-
-【ignore】は `.gitignore` の対象(リポジトリに含めない)。データと実行成果物は再現できるため、記録類はローカルで管理するため除外している。
-
-```
-kaggle/                                  # リポジトリのルート(コンペごとのフォルダ)
-└── 2609/                                # このコンペ
-    ├── README.md
-    ├── CLAUDE.md                        # Claude Code への方針・規約
-    ├── pyproject.toml / uv.lock / .python-version   # 環境(ライブラリの版を固定)
-    ├── src/                             # 本番パイプライン
-    │   ├── 01_eda.py
-    │   ├── 02_baseline_<model>.py
-    │   ├── 03_feature_engineering_<model>.py   # 本番で使う特徴量の関数
-    │   ├── 03_feature_engineering_all.py       # 横断カタログ + 不採用の関数の記録
-    │   ├── 04_train_and_evaluate_<model>.py
-    │   ├── 05_hyperparameter_tuning.py
-    │   ├── 06_ensemble_hill_climbing.py
-    │   ├── 07_compare_predictions.py
-    │   └── feature_catalog.py                  # 採否表(FUNC_STATUS)と列名の JSON 出力
-    ├── notebooks/                       # 工程を追える説明版(01〜06)
-    ├── docs/
-    │   ├── pipeline_overview.png        # プロセス全体像の図
-    │   ├── eda_results.md               # EDA の結果
-    │   ├── fe_results_<model>.md / fe_results_all.md   # 各担当の検証記録
-    │   ├── features_<model>.json        # 本番で使っている列名(--dump-features で生成)
-    │   ├── hyperparameter_tuning_results.csv   # ⑤ の試行ごとの記録(05 が書き、05 の --report が読む)
-    │   └── reference_URL.md 【ignore】   # 参考カーネルの調査結果
-    ├── .claude/agents/                  # サブエージェントの定義
-    │   └── lookup-transformer-lead.md 【ignore】
-    ├── data/ 【ignore】                  # train.csv / test.csv / sample_submission.csv / 元データ
-    ├── datacheck/ 【ignore】             # EDA の図
-    ├── oof/ 【ignore】                   # oof_<model>.npy / pred_<model>.npy(アンサンブル用)
-    ├── submit/ 【ignore】                # submission_<model>.csv
-    ├── importance/ 【ignore】            # feature importance の棒グラフ
-    ├── experiments_rejected/ 【ignore】  # 不採用の実験成果物(記録として保持)
-    ├── backup_*/ 【ignore】              # バックアップ
-    ├── catboost_info/ 【ignore】         # CatBoost が学習時に書き出すログ
-    ├── kernels/ 【ignore】               # 取得した公開カーネル
-    ├── kaggle_kernel_*/ 【ignore】       # Kaggle Notebook で動かしたモデル
-    ├── tools/ 【ignore】                 # 図の作成などの補助スクリプト
-    ├── .venv/ 【ignore】                 # uv が作る仮想環境
-    └── Log.md / nippo.md / research.md / prompt.md / main.py / fe_results_lookup.md 【ignore】   # 実験ログなどの記録
-```
 
 ## 環境
 
@@ -392,29 +437,3 @@ uv run kaggle datasets download -d itzzomkar/ev-adoption-behavior-and-range-anxi
   **ないとエラーにならずにこの列が抜け(39 列 → 38 列)、スコアが本番と一致しない**ので、必ず取得すること。
 - 取得後は「[現行ベストの再現コマンド](#現行ベストの再現コマンド)」で 4 モデルを学習(約 75 分)→ `uv run src/06_ensemble_hill_climbing.py` でアンサンブル。
 - ノートブックは、カーネルに `.venv` の Python を選べば動く。
-
-## 提出ごとの推移
-
-| 提出 | CV | Public LB | 順位(現時点のLBでの相当位置) |
-|---|---|---|---|
-| CatBoost 単体(ベースライン) | 0.94156 | 0.94170 | 1637位(上位60%) |
-| Feature Engineering + 収束確認 | 0.94555 | 0.94576 | 962位(上位35%) |
-| Triple Target Encoding + digit | 0.94604 | 0.94622 | 684位(上位25%) |
-| **列サブサンプリング + 3モデル** | **0.94623** | **0.94645** | **293位(上位10.7%)** |
-
-> 順位はいずれも **2026-09-23 時点の暫定値**(2,732チーム)の LB に照らした相当位置で、
-> 提出当時の順位ではない。
-> **実際の現在順位は 320位。** 0.94645 は 32チームが並ぶ同点帯(293〜324位)で、
-> Kaggle は同点を提出時刻の早い順に並べるため、スコア相当位置より後ろになる。
-> 参加チームは増え続けるため、同じスコアでも順位は日々下がっていく。
-
-## この取り組みで効いたこと
-
-1. **厳密値 Target Encoding**(+0.003)— 前コンペの教訓がそのまま再現した最大の要因
-2. **収束の確認**(+0.0008)— Feature Engineering で特徴量を13→39列に増やしたのに木の本数がデフォルト100のままだった
-3. **列サブサンプリング**(+0.0002)— 外部調査で見つけた見落とし。引数を足すだけ
-4. **異種モデル(RealMLP)の追加** — GBDT同士は相関0.99で同質化しており、多様性の供給源になった
-5. **paired DeLong 検定** — 従来なら誤差として捨てていた改善を拾えるようになった
-
-**効かなかったこと**: 四則演算・交互作用など「人間が意味を考えて作った特徴量」は全滅だった。
-合成データの生成過程にそうした関係がなかったため。
