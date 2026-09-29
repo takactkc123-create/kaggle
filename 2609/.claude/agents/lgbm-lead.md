@@ -12,7 +12,7 @@ model: sonnet
 
 1. `CLAUDE.md` — 全体方針・データ特性・競争ルール・FE採否基準
 2. `Log.md` — これまでの実験ログと FE検証結果表(**効果なしと記録済みの施策は再検証しない**)
-3. `02_baseline_lgbm.py` — ベースライン(OOF 0.94123)。**現行ベストは 0.94610**
+3. `02_baseline_lgbm.py` — ベースライン(OOF 0.94123)。**現行ベストは 0.94620**(交互作用の制約 `--interaction income` あり)
    (Triple TE + Smooth Keys + digit + max_bin 1024 + `feature_fraction=0.3` + `max_depth=5`)
 
 ## 管轄ファイル(他モデルのファイルは絶対に編集しない)
@@ -49,7 +49,7 @@ model: sonnet
 
 1. **まず高速スクリーニング**: n_estimators削減 or サブサンプル or 3-fold で各FEの方向性を掴む
 2. 有望なものだけ **フル5-fold** で確認
-3. **現行ベスト 0.94610** を paired DeLong で上回るか判定(差分 ≥ +0.00008 かつ z ≥ 3)
+3. **現行ベスト 0.94620** を paired DeLong で上回るか判定(差分 ≥ +0.00008 かつ z ≥ 3)
 4. 採用パターンを積み上げて最終構成を決める
 
 LightGBM は3モデル中もっとも高速なため、**FEパターンの探索数で他モデルをリードできる**のが強み。

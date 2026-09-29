@@ -103,11 +103,11 @@ kaggle/                                  # リポジトリのルート(コンペ
 
 | モデル | ② Baseline | ④ 最終構成 | 列数 |
 |---|---|---|---|
-| LightGBM | 0.94123 | **0.94611** | 46 |
+| LightGBM | 0.94123 | **0.94620** | 46(交互作用の制約あり) |
 | XGBoost | 0.94124 | **0.94609** | 69 |
 | CatBoost | 0.94156 | 0.94592 | 43(アンサンブルの重みは 0) |
 | RealMLP | — | 0.94603 | 39 |
-| **アンサンブル**(LightGBM・XGBoost・RealMLP の順位平均) | — | **0.946264** | — |
+| **アンサンブル**(LightGBM・XGBoost・RealMLP の順位平均) | — | **0.946310**(未提出。最終提出の構成は 0.946264) | — |
 
 > **GBDT**(Gradient Boosting Decision Tree:勾配ブースティング決定木)は、決定木を少しずつ足して誤りを補正していくモデルの総称。このリポジトリでは **LightGBM・XGBoost・CatBoost の3つのモデル**を指す。
 
@@ -212,7 +212,7 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 - 交互作用 1 組「自宅充電の可否 × 自宅スタンド数」(LightGBM・RealMLP。+0.00001 で有意差はないが、CV 最高のため最終構成 D に採用)
 - RealMLP の年収の Target Encoding(train だけで作る。`--te-income`)。元データの購入率と並べて単体 +0.000128 / アンサンブル +0.000018
 
-**効かなかったもの**: 四則演算、交互作用の Target Encoding(2〜13列。上の1組を除く)、行フィンガープリント、元データの行の追加、補助金との組み合わせ。
+**効かなかったもの**: 四則演算、交互作用の Target Encoding(2〜13列。上の1組を除く)、行フィンガープリント、元データの行の追加、補助金との組み合わせ、元データの年収ごとの購入率を GBDT に足す、Target Encoding を内側の乱数を変えて数回作り平均する。
 各施策の詳細(なぜ試したか / 期待した効果 / 結果の考察)は `docs/fe_results_*.md` を参照。
 
 > `src/03_feature_engineering_<model>.py` は**関数の定義のみ**、`src/04_train_and_evaluate_<model>.py` が**実行**という分担。
@@ -234,7 +234,7 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 ```bash
 uv run src/04_train_and_evaluate_lgbm.py \
   --max_bin 1024 --feature_fraction 0.3 --max_depth 5 \
-  --folds 5 --learning_rate 0.03 --n_estimators 8000 --early_stopping 200 --n_jobs 7 --save --tag lgbm
+  --folds 5 --learning_rate 0.03 --n_estimators 8000 --early_stopping 200 --n_jobs 7 --interaction income --save --tag lgbm
 
 uv run src/04_train_and_evaluate_xgb.py --max-bin 1024 \
   --set-param colsample_bytree=0.3 --set-param max_depth=5 \
@@ -248,7 +248,7 @@ uv run src/04_train_and_evaluate_realmlp.py --folds 5 --threads 7 --combo-home -
 
 | モデル | OOF AUC | 備考 |
 |---|---|---|
-| **LightGBM** | **0.94610** | アンサンブル採用 |
+| **LightGBM** | **0.94620** | アンサンブル採用。年収系の列とそれ以外の列を、同じ木の枝で組み合わせない(交互作用の制約) |
 | **XGBoost** | **0.94609** | アンサンブル採用 |
 | **RealMLP** | **0.94603** | アンサンブル採用。GBDTとの相関が低く多様性を供給 |
 | CatBoost | 0.94592 | 現在アンサンブルの重みは 0 |
@@ -294,6 +294,13 @@ uv run src/feature_importance.py lgbm --top 20    # モデルと表示する列�
 | CatBoost | — | 列サンプリングは**有害**(-0.00015)。対称木のため木全体が一斉に弱くなる |
 
 **木を弱くしたら `n_estimators` を増やして収束を取り直すこと。** 怠ると「効かない」と誤判定する。
+
+**交互作用の制約が効いた**(2026-09-29、Feature Importance から立てた仮説)。重要度の 7〜9 割を補助金と環境意識が占めるので、年収系の列(年収・その Smooth Keys・digit・Count・Target Encoding)とそれ以外の列を、同じ木の枝で組み合わせないようにした。年収の細部が別の枝で学ばれる。
+
+| モデル | 単体の差 | アンサンブルの差 | 判定 |
+|---|---|---|---|
+| LightGBM | **+0.000091**(z=+4.21) | **+0.000047**(z=+6.50)。5 fold すべてで改善 | **採用** |
+| XGBoost | +0.000089(z=+4.20) | LightGBM に入れた構成への上積みは +0.000004(z=+0.52) | 採否は未決定(`--interaction income` で試せる) |
 
 ### 探索のフレーム
 
@@ -341,6 +348,7 @@ hill climbing で足し合わせる。選ばれた回数がそのまま重みに
 | 提出 | CV | Public LB |
 |---|---|---|
 | **現在の構成**(D + RealMLP に年収の Target Encoding を train だけで追加。2026-09-28) | **0.946264** | 0.94642 |
+| (未提出)上 + LightGBM に交互作用の制約(2026-09-29。`submit/submission_h2_lgbm_interaction_income.csv`) | **0.946310** | — |
 | (参考)D(置き換え前。LightGBM・RealMLP に自宅充電 × 自宅スタンド数を追加。タグ `best-20260927-d`) | 0.946245 | 0.94640 |
 | 元の構成(タグ `final-original-20260927`) | 0.946234 | **0.94645** |
 (**459位 / 3,295チーム**、2026-09-28 時点。上の「結果」を参照)
@@ -407,6 +415,7 @@ z=+8.48 で誤差でないことが確定した。
 3. **列サブサンプリング**(+0.0002)— 外部調査で見つけた見落とし。引数を足すだけ
 4. **異種モデル(RealMLP)の追加** — GBDT同士は相関0.99で同質化しており、多様性の供給源になった
 5. **paired DeLong 検定** — 従来なら誤差として捨てていた改善を拾えるようになった
+6. **交互作用の制約**(+0.000047)— Feature Importance で「補助金と環境意識が大半を占める」と分かり、年収の細部を別の枝で学ばせた
 
 **効かなかったこと**: 四則演算・交互作用など「人間が意味を考えて作った特徴量」は全滅だった。
 合成データの生成過程にそうした関係がなかったため。
