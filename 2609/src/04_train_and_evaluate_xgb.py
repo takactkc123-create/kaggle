@@ -58,12 +58,6 @@ def fold_matrices(prep, y, tr_idx, va_idx):
     return X_tr, X_va, X_te
 
 
-# 交互作用の制約のグループ(列名のリスト)を作る。年収系の列(年収・その Smooth Keys・digit・Count・TE)と、それ以外に分ける
-def interaction_groups(cols):
-    inc = [c for c in cols if "Annual_Income_USD" in c or c.startswith("inc_f")]
-    return [inc, [c for c in cols if c not in inc]]
-
-
 # XGBoost を 5-fold で学習し、OOF 予測と test 予測を返す
 def run_cv(args):
     train = pd.read_csv("data/train.csv")
@@ -109,10 +103,7 @@ def run_cv(args):
                                  note="本番の構成(fe.te_plan())")
             return None
 
-        if args.interaction == "income":
-            model = XGBClassifier(**params, interaction_constraints=interaction_groups(list(X_tr.columns)))
-        else:
-            model = XGBClassifier(**params)
+        model = XGBClassifier(**params)
         if args.early_stopping:
             model.fit(X_tr, y.iloc[tr_idx], eval_set=[(X_va, y.iloc[va_idx])], verbose=False)
             best_iters.append(int(model.best_iteration) + 1)
@@ -183,9 +174,6 @@ def main():
     ap.add_argument("--save", action="store_true", help="提出ファイル・OOF・重要度を保存する")
     ap.add_argument("--dump-features", action="store_true",
                     help="学習せず、fold 1 の列名を docs/features_xgb<suffix>.json に書いて終了する")
-    ap.add_argument("--interaction", choices=["none", "income"], default="none",
-                    help="交互作用の制約。income=年収系の列と他の列を同じ木の枝で組み合わせない"
-                         "(2026-09-29 検証。単体 +0.000089 だがアンサンブルへの上積みは +0.000004 で、採否は未決定)")
     ap.add_argument("--out-suffix", default="", help="成果物のファイル名の接尾辞。例 '_lr05' -> oof/oof_xgb_lr05.npy")
     run_cv(ap.parse_args())
 
