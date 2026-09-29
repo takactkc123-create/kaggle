@@ -467,14 +467,6 @@ def add_income_neighborhood(fit_income, fit_y, other_incomes, radii=NEIGHBOR_RAD
               for o in other_incomes]
     return fit_frame, others
 
-
-
-# 元データでの年収ごとの購入率を列にする(RealMLP の _Annual_Income_USD_mean_target_orig と同じ作り方。2026-09-29 に GBDT で検証)
-def orig_income_rate(df: pd.DataFrame, orig: pd.DataFrame) -> np.ndarray:
-    """元データ(train・test とは別のデータ)で計算するのでリークしない。元データにない年収は、元データ全体の購入率で埋める。"""
-    return (df["Annual_Income_USD"].map(orig.groupby("Annual_Income_USD")[TARGET].mean())
-            .fillna(orig[TARGET].mean()).astype("float32").to_numpy())
-
 # ============================================================================
 # 不採用(記録)— 各モデルの 03_feature_engineering_<model>.py から移した関数
 #   本番では使わない。再検証しないための記録として残す。名前の末尾はもとのモデル。
@@ -1154,3 +1146,10 @@ def realmlp_rejected_extras(df: pd.DataFrame, category_map: dict, fit: bool) -> 
         scaled = np.round(df[col] * 10).astype("int64")
         df[f"{col}_d{p - 1}_"] = ((scaled // 10**p) % 10).astype("int32")
     return df
+
+
+# 【不採用】元データでの年収ごとの購入率を GBDT の列にする(2026-09-29。LightGBM -0.000003 / XGBoost -0.000005 / CatBoost -0.000012 で誤差)
+def orig_income_rate_gbdt(df: pd.DataFrame, orig: pd.DataFrame) -> np.ndarray:
+    """元データ(train・test とは別のデータ)で計算するのでリークしない。元データにない年収は、元データ全体の購入率で埋める。"""
+    return (df["Annual_Income_USD"].map(orig.groupby("Annual_Income_USD")[TARGET].mean())
+            .fillna(orig[TARGET].mean()).astype("float32").to_numpy())

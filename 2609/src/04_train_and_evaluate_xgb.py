@@ -33,17 +33,12 @@ TARGET = "Will_Buy_EV"
 
 
 # fold によらない部分(生の列・digit・Count)と、Target Encoding のキーの整数コードを作る
-def prepare(train: pd.DataFrame, test: pd.DataFrame, orig_rate: bool = False):
+def prepare(train: pd.DataFrame, test: pd.DataFrame):
     cols = fe.ALL_COLS
     X, X_test = train[cols].copy(), test[cols].copy()
     X, X_test = fe.add_digit_features(X, X_test, train, test, cols=fe.DIGIT_COLS)
     X, X_test = fe.add_count_encoding(X, X_test, train, test, cols)
     X, X_test = fe.as_ordinal(X, X_test, fe.CATEGORICAL_COLS)
-    if orig_rate:   # 元データでの年収ごとの購入率(2026-09-29 の検証用)
-        fe_all = importlib.import_module("03_feature_engineering_all")
-        orig = importlib.import_module("03_feature_engineering_realmlp").load_orig("data/EV_Adoption_and_Range_Anxiety_Dataset.csv")
-        X["orig_rate_income"] = fe_all.orig_income_rate(train, orig)
-        X_test["orig_rate_income"] = fe_all.orig_income_rate(test, orig)
 
     sk_tr, sk_te = fe.make_smooth_keys(train, test)
     src_tr = pd.concat([sk_tr, train[cols]], axis=1)
@@ -54,17 +49,19 @@ def prepare(train: pd.DataFrame, test: pd.DataFrame, orig_rate: bool = False):
 
 
 # 1 つの fold の学習行・検証行・test の行列を作る(Target Encoding は学習行だけで作る)
-def fold_matrices(prep, y, tr_idx, va_idx, te_bag: int = 1):
+def fold_matrices(prep, y, tr_idx, va_idx):
     X, X_test, (c_tr, c_te, ncats), plan = prep
     te_tr, te_va, te_te = fe.fit_apply_te_cv_nested_plan(c_tr, c_te, ncats, y, plan, tr_idx, va_idx)
-    for k in range(1, te_bag):   # 学習行の値だけ、内側の分割の乱数を変えて作り直して平均する(検証行・test は乱数によらない)
-        te_tr = te_tr + fe.fit_apply_te_cv_nested_plan(c_tr, c_te, ncats, y, plan, tr_idx, va_idx, seed=42 + k)[0]
-    if te_bag > 1:
-        te_tr = te_tr / te_bag
     X_tr = pd.concat([X.iloc[tr_idx].reset_index(drop=True), te_tr.reset_index(drop=True)], axis=1)
     X_va = pd.concat([X.iloc[va_idx].reset_index(drop=True), te_va.reset_index(drop=True)], axis=1)
     X_te = pd.concat([X_test.reset_index(drop=True), te_te.reset_index(drop=True)], axis=1)
     return X_tr, X_va, X_te
+
+
+# 交互作用の制約のグループ(列名のリスト)を作る。年収系の列(年収・その Smooth Keys・digit・Count・TE)と、それ以外に分ける
+def interaction_groups(cols):
+    inc = [c for c in cols if "Annual_Income_USD" in c or c.startswith("inc_f")]
+    return [inc, [c for c in cols if c not in inc]]
 
 
 # XGBoost を 5-fold で学習し、OOF 予測と test 予測を返す
@@ -75,7 +72,7 @@ def run_cv(args):
         train = train.sample(frac=args.sample, random_state=42).reset_index(drop=True)
     y = (train[TARGET] == "Yes").astype(int)
 
-    prep = prepare(train, test, orig_rate=args.orig_rate)
+    prep = prepare(train, test)
     splits = list(StratifiedKFold(n_splits=5, shuffle=True, random_state=42).split(prep[0], y))[: args.folds]
 
     params = dict(random_state=42, tree_method="hist", n_jobs=args.n_jobs)
@@ -103,7 +100,7 @@ def run_cv(args):
     t0 = time.time()
 
     for fold, (tr_idx, va_idx) in enumerate(splits):
-        X_tr, X_va, X_te = fold_matrices(prep, y, tr_idx, va_idx, te_bag=args.te_bag)
+        X_tr, X_va, X_te = fold_matrices(prep, y, tr_idx, va_idx)
 
         if args.dump_features:
             import feature_catalog
@@ -112,7 +109,10 @@ def run_cv(args):
                                  note="本番の構成(fe.te_plan())")
             return None
 
-        model = XGBClassifier(**params)
+        if args.interaction == "income":
+            model = XGBClassifier(**params, interaction_constraints=interaction_groups(list(X_tr.columns)))
+        else:
+            model = XGBClassifier(**params)
         if args.early_stopping:
             model.fit(X_tr, y.iloc[tr_idx], eval_set=[(X_va, y.iloc[va_idx])], verbose=False)
             best_iters.append(int(model.best_iteration) + 1)
@@ -183,8 +183,9 @@ def main():
     ap.add_argument("--save", action="store_true", help="提出ファイル・OOF・重要度を保存する")
     ap.add_argument("--dump-features", action="store_true",
                     help="学習せず、fold 1 の列名を docs/features_xgb<suffix>.json に書いて終了する")
-    ap.add_argument("--orig-rate", action="store_true", help="元データでの年収ごとの購入率の列を足す(2026-09-29 の検証用)")
-    ap.add_argument("--te-bag", type=int, default=1, help="Target Encoding の学習行の値を、内側の乱数を変えて N 回作り平均する(2026-09-29 の検証用)")
+    ap.add_argument("--interaction", choices=["none", "income"], default="none",
+                    help="交互作用の制約。income=年収系の列と他の列を同じ木の枝で組み合わせない"
+                         "(2026-09-29 検証。単体 +0.000089 だがアンサンブルへの上積みは +0.000004 で、採否は未決定)")
     ap.add_argument("--out-suffix", default="", help="成果物のファイル名の接尾辞。例 '_lr05' -> oof/oof_xgb_lr05.npy")
     run_cv(ap.parse_args())
 

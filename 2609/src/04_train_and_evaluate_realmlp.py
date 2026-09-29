@@ -587,10 +587,6 @@ def main():
         help="自宅充電の可否 × 自宅スタンド数を組み合わせキーに足す(EDA の交互作用の検証用)",
     )
     ap.add_argument(
-        "--te-sk100", action="store_true",
-        help="年収 /100 に丸めたキーの購入率を train だけで fold 内に作る(2026-09-29 の検証用)",
-    )
-    ap.add_argument(
         "--te-income", action="store_true",
         help="年収の値ごとの購入率を train だけで fold 内に作る(2026-09-28 検証。元データの購入率と併用で単体 +0.000128 / アンサンブル +0.000018。採否は未決定)",
     )
@@ -635,9 +631,6 @@ def main():
     if args.te_income:
         # 年収そのもの(整数コード化した列)も fold 内 Target Encoding の対象にする
         combo_names = combo_names + ["Annual_Income_USD_cat_"]
-    if args.te_sk100:
-        # 年収 /100 に丸めたキー(Smooth Keys。整数コード化した列)も fold 内 Target Encoding の対象にする
-        combo_names = combo_names + ["Income_/_100_floor_"]
     print(f"FE done in {time.time() - t0:.0f}s | cat={len(cat_cols)} num={len(num_cols)} "
           f"| X={X.shape} X_test={X_test.shape}", flush=True)
 

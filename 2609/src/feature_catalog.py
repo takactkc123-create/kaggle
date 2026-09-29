@@ -203,7 +203,8 @@ FUNC_STATUS = {
     ("03_feature_engineering_all", "add_count_encoding_catboost"):  (REJECTED, "内部の Ordered TS と重複して無効"),
     ("03_feature_engineering_all", "build_te_key_frame_realmlp"):   (REJECTED, "--exact-te 用。単体 +0.000156 だがアンサンブル寄与ゼロ"),
     ("03_feature_engineering_all", "target_encode_highcard_realmlp"): (REJECTED, "同上。GBDTとの相関が上がり多様性を損なう"),
-    ("03_feature_engineering_all", "realmlp_rejected_extras"): (REJECTED, "RealMLP の digit・通勤距離÷年齢・通勤距離/5。いずれも誤差")
+    ("03_feature_engineering_all", "realmlp_rejected_extras"): (REJECTED, "RealMLP の digit・通勤距離÷年齢・通勤距離/5。いずれも誤差"),
+    ("03_feature_engineering_all", "orig_income_rate_gbdt"):   (REJECTED, "元データの年収ごとの購入率を GBDT に。LightGBM -0.000003 / XGBoost -0.000005 / CatBoost -0.000012 で誤差(2026-09-29)")
 }
 
 

@@ -51,19 +51,15 @@ def build_parser():
                    help="検証 fold の AUC が指定本数改善しなければ止める(0 = 使わない)")
     p.add_argument("--save", action="store_true", help="提出ファイル・OOF・重要度を保存する")
     p.add_argument("--tag", default="lgbm", help="成果物のファイル名(oof/oof_<tag>.npy など)")
-    p.add_argument("--interaction", choices=["none", "income", "family"], default="none",
-                   help="交互作用の制約(2026-09-29 の検証用)。income=年収系の列と他の列を同じ木の枝で組み合わせない / "
-                        "family=元の列ごと(その TE・Count・digit を含む)に分け、別の元の列と組み合わせない")
-    p.add_argument("--orig-rate", action="store_true", help="元データでの年収ごとの購入率の列を足す(2026-09-29 の検証用)")
-    p.add_argument("--te-bag", type=int, default=1,
-                   help="Target Encoding の学習行の値を、内側の分割の乱数を変えて N 回作り平均する(2026-09-29 の検証用)")
+    p.add_argument("--interaction", choices=["none", "income"], default="none",
+                   help="交互作用の制約。income=年収系の列と他の列を同じ木の枝で組み合わせない(本番は income。2026-09-29 採用)")
     p.add_argument("--dump-features", action="store_true",
                    help="学習せず、fold 1 の列名を docs/features_<tag>.json に書いて終了する")
     return p
 
 
 # fold によらない部分(生の列・digit・Count)と、Target Encoding のキーを作る
-def prepare(train: pd.DataFrame, test: pd.DataFrame, orig_rate: bool = False):
+def prepare(train: pd.DataFrame, test: pd.DataFrame):
     train_c, test_c = fe.make_categorical(train, test)
     keys_tr, keys_te = fe.make_key_frame(train, test)
     keys_tr, keys_te = fe.add_smooth_keys(keys_tr, train), fe.add_smooth_keys(keys_te, test)
@@ -75,51 +71,27 @@ def prepare(train: pd.DataFrame, test: pd.DataFrame, orig_rate: bool = False):
     raw = fe.NUMERIC_COLS + fe.CATEGORICAL_COLS
     static_tr = pd.concat([train_c[raw], d_tr, c_tr], axis=1)
     static_te = pd.concat([test_c[raw], d_te, c_te], axis=1)
-    if orig_rate:
-        fe_all = importlib.import_module("03_feature_engineering_all")
-        orig = importlib.import_module("03_feature_engineering_realmlp").load_orig("data/EV_Adoption_and_Range_Anxiety_Dataset.csv")
-        static_tr["orig_rate_income"] = fe_all.orig_income_rate(train, orig)
-        static_te["orig_rate_income"] = fe_all.orig_income_rate(test, orig)
     return static_tr, static_te, keys_tr, keys_te
 
 
 # 1 つの fold の学習行・検証行・test の行列を作る(Target Encoding は学習行だけで作る)
-def fold_matrices(prep, y: np.ndarray, tr_idx, va_idx, n_inner: int = 5, te_bag: int = 1):
+def fold_matrices(prep, y: np.ndarray, tr_idx, va_idx, n_inner: int = 5):
     static_tr, static_te, keys_tr, keys_te = prep
     te_tr, (te_va, te_te) = fe.target_encode_plan(
         keys_tr.iloc[tr_idx], y[tr_idx], [keys_tr.iloc[va_idx], keys_te], fe.te_plan(), n_inner=n_inner, seed=SEED)
-    for k in range(1, te_bag):   # 学習行の値だけ、内側の分割の乱数を変えて作り直して平均する(検証行・test は乱数によらない)
-        extra, _ = fe.target_encode_plan(keys_tr.iloc[tr_idx], y[tr_idx], [keys_tr.iloc[va_idx]], fe.te_plan(),
-                                         n_inner=n_inner, seed=SEED + k)
-        te_tr = te_tr + extra
-    if te_bag > 1:
-        te_tr = te_tr / te_bag
     X_tr = pd.concat([static_tr.iloc[tr_idx].reset_index(drop=True), te_tr.reset_index(drop=True)], axis=1)
     X_va = pd.concat([static_tr.iloc[va_idx].reset_index(drop=True), te_va.reset_index(drop=True)], axis=1)
     X_te = pd.concat([static_te.reset_index(drop=True), te_te.reset_index(drop=True)], axis=1)
     return X_tr, X_va, X_te
 
 
-# 交互作用の制約のグループ(列の番号のリスト)を作る。同じグループの列どうしだけが、同じ木の枝で組み合わさる
-def interaction_groups(cols, mode):
-    raws = fe.NUMERIC_COLS + fe.CATEGORICAL_COLS
-
-    def base(c):   # その列のもとになった元の列(年収の Smooth Keys・元データの購入率は年収)
-        if "sk_inc" in c or c == "orig_rate_income":
-            return "Annual_Income_USD"
-        if "sk_commute" in c:
-            return "Daily_Commute_km"
-        if "Home_Charging_PossibleXCharging_Stations_Near_Home" in c:
-            return "home_pair"
-        return next((r for r in sorted(raws, key=len, reverse=True) if r in c), c)
-
-    if mode == "income":
-        inc = [i for i, c in enumerate(cols) if base(c) == "Annual_Income_USD"]
-        return [inc, [i for i in range(len(cols)) if i not in inc]]
-    groups = {}
-    for i, c in enumerate(cols):
-        groups.setdefault(base(c), []).append(i)
-    return list(groups.values())
+# 交互作用の制約のグループ(列の番号のリスト)。年収系の列(年収・その Smooth Keys・digit・Count・TE)と、それ以外に分ける
+def interaction_groups(cols, mode="income"):
+    """同じグループの列どうしだけが、同じ木の枝で組み合わさる。補助金・環境意識が分割の大半を占めるなか、
+    年収の細部を別の枝で学ばせる(2026-09-29 採用。単体 +0.000091, z=+4.21 / アンサンブル +0.000047, z=+6.50)。"""
+    assert mode == "income", mode
+    inc = [i for i, c in enumerate(cols) if "Annual_Income_USD" in c or "sk_inc" in c]
+    return [inc, [i for i in range(len(cols)) if i not in inc]]
 
 
 # LightGBM を 5-fold で学習・評価し、成果物を保存する
@@ -133,7 +105,7 @@ def main():
         train = train.loc[idx].reset_index(drop=True)
     y = (train[fe.TARGET] == "Yes").astype(int).to_numpy()
 
-    prep = prepare(train, test, orig_rate=args.orig_rate)
+    prep = prepare(train, test)
     skf = StratifiedKFold(n_splits=N_SPLITS, shuffle=True, random_state=SEED)
     oof = np.full(len(train), np.nan)
     test_pred = np.zeros(len(test))
@@ -142,7 +114,7 @@ def main():
     for fold, (tr_idx, va_idx) in enumerate(skf.split(train, y)):
         if fold >= args.folds:
             break
-        X_tr, X_va, X_te = fold_matrices(prep, y, tr_idx, va_idx, n_inner=args.inner, te_bag=args.te_bag)
+        X_tr, X_va, X_te = fold_matrices(prep, y, tr_idx, va_idx, n_inner=args.inner)
 
         if args.dump_features:
             import feature_catalog

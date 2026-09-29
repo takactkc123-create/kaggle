@@ -70,7 +70,9 @@ def importance_of(model, X_tr, y_tr, X_va, y_va, cats):
         clf = LGBMClassifier(random_state=42, verbosity=-1, n_estimators=int(f["--n_estimators"]),
                              learning_rate=float(f["--learning_rate"]), num_leaves=31, max_bin=int(f["--max_bin"]),
                              n_jobs=int(f["--n_jobs"]), colsample_bytree=float(f["--feature_fraction"]),
-                             max_depth=int(f["--max_depth"]), importance_type="gain")
+                             max_depth=int(f["--max_depth"]), importance_type="gain",
+                             **({"interaction_constraints": importlib.import_module("04_train_and_evaluate_lgbm")
+                                 .interaction_groups(list(X_tr.columns), f["--interaction"])} if "--interaction" in f else {}))
         clf.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], eval_metric="auc",
                 callbacks=[early_stopping(int(f["--early_stopping"]), verbose=False), log_evaluation(0)])
         imp = clf.feature_importances_

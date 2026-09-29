@@ -49,15 +49,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dump-features", action="store_true",
                    help="学習せず、fold 1 の列名を docs/features_<tag>.json に書いて終了する")
     p.add_argument("--tag", default="", help="結果の表示に付けるラベル")
-    p.add_argument("--orig-rate", action="store_true", help="元データでの年収ごとの購入率の列を足す(2026-09-29 の検証用)")
-    p.add_argument("--te-bag", type=int, default=1, help="Target Encoding の学習行の値を、内側の乱数を変えて N 回作り平均する(2026-09-29 の検証用)")
     p.add_argument("--out-suffix", default="",
                    help="成果物のファイル名の接尾辞。例 '_d5' -> oof/oof_catboost_d5.npy(既定は本番の名前)")
     return p.parse_args()
 
 
 # fold によらない部分(生の列・digit・Smooth Keys・catify)を作る
-def prepare(train: pd.DataFrame, test: pd.DataFrame, orig_rate: bool = False):
+def prepare(train: pd.DataFrame, test: pd.DataFrame):
     base_cols = fe.NUMERIC_COLS + fe.CATEGORICAL_COLS
     X, X_test = train[base_cols].copy(), test[base_cols].copy()
 
@@ -70,27 +68,15 @@ def prepare(train: pd.DataFrame, test: pd.DataFrame, orig_rate: bool = False):
 
     fe.cast_to_str([X, X_test], fe.LOWCARD_NUM_COLS)            # catify
     feature_cols = base_cols + digit_cols
-    if orig_rate:   # 元データでの年収ごとの購入率(2026-09-29 の検証用)
-        fe_all = importlib.import_module("03_feature_engineering_all")
-        orig = importlib.import_module("03_feature_engineering_realmlp").load_orig("data/EV_Adoption_and_Range_Anxiety_Dataset.csv")
-        X["orig_rate_income"] = fe_all.orig_income_rate(train, orig)
-        X_test["orig_rate_income"] = fe_all.orig_income_rate(test, orig)
-        feature_cols = feature_cols + ["orig_rate_income"]
     cat_features = fe.CATEGORICAL_COLS + fe.LOWCARD_NUM_COLS
     return X, X_test, feature_cols, cat_features, fe.te_plan(sk_cols)
 
 
 # 1 つの fold の学習行・検証行・test の行列と、使う列・カテゴリ列を作る(Target Encoding は学習行だけで作る)
-def fold_matrices(prep, y: np.ndarray, tr_idx, va_idx, te_bag: int = 1):
+def fold_matrices(prep, y: np.ndarray, tr_idx, va_idx):
     X, X_test, feature_cols, cat_features, plan = prep
     X_tr, X_va, X_te = X.iloc[tr_idx].copy(), X.iloc[va_idx].copy(), X_test.copy()
     new_te = fe.target_encode_plan(X_tr, X_va, X_te, y[tr_idx], plan)
-    for k in range(1, te_bag):   # 学習行の値だけ、内側の分割の乱数を変えて作り直して平均する(検証行・test は乱数によらない)
-        tmp = X.iloc[tr_idx].copy()
-        fe.target_encode_plan(tmp, X.iloc[va_idx].copy(), X_test.iloc[:1].copy(), y[tr_idx], plan, seed=42 + k)
-        X_tr[new_te] = X_tr[new_te].to_numpy() + tmp[new_te].to_numpy()
-    if te_bag > 1:
-        X_tr[new_te] = X_tr[new_te].to_numpy() / te_bag
     feats = feature_cols + new_te
     cats = [c for c in cat_features if c in feats]
     return X_tr[feats], X_va[feats], X_te[feats], feats, cats
@@ -106,7 +92,7 @@ def main() -> None:
         train = train.sample(n=args.rows, random_state=42).reset_index(drop=True)
     y = (train[fe.TARGET] == "Yes").astype(int).to_numpy()
 
-    prep = prepare(train, test, orig_rate=args.orig_rate)
+    prep = prepare(train, test)
     print(f"[{args.tag or 'catboost'}] rows={len(train)} te_keys={len(prep[4])}")
 
     params = dict(random_state=42, verbose=False, allow_writing_files=False)
@@ -138,7 +124,7 @@ def main() -> None:
     importances, used_features = None, []
 
     for fold, (tr_idx, va_idx) in enumerate(skf.split(train, y)):
-        X_tr, X_va, X_te, feats, cats = fold_matrices(prep, y, tr_idx, va_idx, te_bag=args.te_bag)
+        X_tr, X_va, X_te, feats, cats = fold_matrices(prep, y, tr_idx, va_idx)
         used_features = feats
 
         fold_params = dict(params)
