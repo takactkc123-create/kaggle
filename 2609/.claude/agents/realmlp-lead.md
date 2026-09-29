@@ -23,7 +23,7 @@ model: sonnet
 
 ## 現状
 
-- OOF AUC **0.94603**(2エポック、`--combo-home --te-income`)。単体では LightGBM 0.94611 / XGBoost 0.94609 に次ぐ3位
+- OOF AUC **0.94603**(2エポック、`--combo-home --te-income`)。単体では LightGBM 0.94620 / XGBoost 0.94609 に次ぐ3位
 - 環境に **GPUはなく torch は CPU版のみ**。1エポック約290秒(7スレッド)、フル5-fold約50分
 
 ## 管轄ファイル

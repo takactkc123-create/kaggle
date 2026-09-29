@@ -39,11 +39,9 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 7. **09-27**: 列の整理(`--dedup` / `--lean`)と交互作用1組を採用し、最終構成 D を決定。
 8. **09-28**: `.py` を必要な列だけを作る形に整理(予測は完全一致)。補助金との組み合わせは全モデルで誤差。
    RealMLP に年収の Target Encoding(train だけで作る)を足し、CV 最高 0.946264 に。
-9. **09-29**: Feature Importance(`src/feature_importance.py`)から仮説を5つ立てて検証。**LightGBM の交互作用の制約**
-   (年収系の列とそれ以外を同じ枝で組み合わせない)が単体 +0.000091(z=+4.21)で採用基準を満たし、アンサンブル CV 0.946310 / Public 0.94644。
-   最終提出②をこの構成に置き換えた。XGBoost の同じ制約は単体 +0.000089 だが、上積みなし(Public も同点)で不採用。
-   CatBoost を 1/4 で混ぜた構成も提出したが Public 0.94641 と下がり、② と予測がほぼ同じ(順位相関 0.99988)で両張りにならない。
-   最終提出は、予測が最も違う ①(② との相関 0.99956)+ ② のまま。
+9. **09-29**: Feature Importance から立てた仮説のうち、**LightGBM の交互作用の制約**(年収系の列とそれ以外を同じ枝で組み合わせない)を採用。
+   単体 +0.000091(z=+4.21)、アンサンブル CV 0.946310 / Public 0.94644 で、最終提出②を置き換えた。XGBoost の同じ制約は上積みなしで不採用。
+   最終提出は、予測が最も違う ①(② との順位相関 0.99956)+ ② の両張り(下記「現状」)。
 
 **改善の内訳**: Feature Engineering +0.004 / 収束確認 +0.0008 / 列サブサンプリング +0.0002 / RealMLP 追加 +0.0005。
 パラメータ側で効いたのは「見落としの是正」2件だけ。
@@ -101,7 +99,7 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
   **Feature Engineering を変えたら必ず再生成すること**。
 - `03_<model>` には本番で使う関数だけを置き、作る列は各モデルの `te_plan()` などにまとめる。捨てた関数は
   `03_feature_engineering_all.py` の「不採用(記録)」に、名前の末尾にモデル名を付けて移す。
-  採否は `src/feature_catalog.py` の **`FUNC_STATUS`**(〇33 / ✖32 / 補助8)が持ち、**採否を変えたらこの表も更新する**。`verify_status()` が JSON と突き合わせて矛盾を検出する。
+  採否は `src/feature_catalog.py` の **`FUNC_STATUS`**(〇33 / ✖33 / 補助8)が持ち、**採否を変えたらこの表も更新する**。`verify_status()` が JSON と突き合わせて矛盾を検出する。
 
 ## 採否基準(2026-09-20 から paired DeLong 検定)
 
