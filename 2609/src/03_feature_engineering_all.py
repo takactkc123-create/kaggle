@@ -470,7 +470,7 @@ def add_income_neighborhood(fit_income, fit_y, other_incomes, radii=NEIGHBOR_RAD
 # ============================================================================
 # 不採用(記録)— 各モデルの 03_feature_engineering_<model>.py から移した関数
 #   本番では使わない。再検証しないための記録として残す。名前の末尾はもとのモデル。
-#   根拠は src/feature_catalog.py の FUNC_STATUS と、notebooks/03_feature_engineering.ipynb の 9 章。
+#   根拠は src/feature_catalog.py の FUNC_STATUS と、notebooks/03_feature_engineering.ipynb の 03-9 章。
 #   移す前のコードは git のタグ best-20260927-d にある。
 # ============================================================================
 

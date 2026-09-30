@@ -98,7 +98,7 @@ kaggle/                                  # リポジトリのルート(コンペ
 | ⑥ | Ensemble(アンサンブル) | `06_ensemble_hill_climbing.py` | `06_ensemble.ipynb` | `submit/submission_hillclimb.csv` |
 | ⑦ | Paired DeLong Test(対応のある DeLong 検定) | `07_compare_predictions.py` | (`06_ensemble.ipynb` に含む) | 採否判定 |
 | — | 補助 | `feature_catalog.py` | — | 本番で使っている関数の一覧(`FUNC_STATUS`)と列名の JSON 出力 |
-| — | 補助 | `feature_importance.py` | `04_train_and_evaluate.ipynb` の 7 章 | Feature Importance(特徴量の重要度)の上位の列。本番の成果物には書き込まない |
+| — | 補助 | `feature_importance.py` | `04_train_and_evaluate.ipynb` の 04-7 章 | Feature Importance(特徴量の重要度)の上位の列。本番の成果物には書き込まない |
 | — | Claude Code | `.claude/agents/*.md` | — | `docs/fe_results_*.md` |
 
 | モデル | ② Baseline | ④ 最終構成 | 列数 |
@@ -123,7 +123,7 @@ kaggle/                                  # リポジトリのルート(コンペ
 | `notebooks/01_eda.ipynb` | ① | データの素性、値の種類（ユニーク値）の数、値ごとの購入率 |
 | `notebooks/02_baseline.ipynb` | ② | 3モデルのベースライン(共通の CV ループ) |
 | `notebooks/03_feature_engineering.ipynb` | ③ | read_csv から特徴量の作成までを **GBDT 共通 → GBDT モデル別 → RealMLP** の順にノートブック内で実行し、意図と根拠を説明。本番の .py と値まで一致することも確認。不採用にした施策の一覧も載せる |
-| `notebooks/04_train_and_evaluate.ipynb` | ④ | 4モデルを本番と同じ特徴量・設定で上から順に学習し、本番の OOF と一致することを確認(約75分)。7 章で Feature Importance を横向き棒グラフで確認 |
+| `notebooks/04_train_and_evaluate.ipynb` | ④ | 4モデルを本番と同じ特徴量・設定で上から順に学習し、本番の OOF と一致することを確認(約75分)。04-7 章で Feature Importance を横向き棒グラフで確認 |
 | `notebooks/05_hyperparameter_tuning.ipynb` | ⑤ | Hyperparameter Tuning の設計と所要時間の見積もり + 実行した 18 試行の結果(すべて誤差か悪化。計画 24 のうち 6 本は打ち切り) |
 | `notebooks/06_ensemble.ipynb` | ⑥⑦ | ブレンドの再現。相関の確認と DeLong 検定による採否判定まで |
 
@@ -317,7 +317,7 @@ uv run src/05_hyperparameter_tuning.py --report                 # これまで�
 
 **本番のパラメータの正本は `src/05_hyperparameter_tuning.py` の `FIXED`**(本番コマンドのうち探索しない固定部分)。
 05 の結果が 04 に自動で反映される仕組みはなく、`notebooks/04_train_and_evaluate.ipynb` は確定した値を書き写したうえで、
-6 章で `FIXED` と同じかを照合している(ずれていれば止まる)。④の再現コマンドも `FIXED` と同じ値にそろえること。
+04-6 章で `FIXED` と同じかを照合している(ずれていれば止まる)。④の再現コマンドも `FIXED` と同じ値にそろえること。
 
 | モデル | 試行数 | 1本あたり | 合計 | 優先度 |
 |---|---|---|---|---|
