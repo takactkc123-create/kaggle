@@ -460,6 +460,7 @@ uv run kaggle datasets download -d itzzomkar/ev-adoption-behavior-and-range-anxi
 - 2 つ目は**元データ**(`data/EV_Adoption_and_Range_Anxiety_Dataset.csv`、1 万行)。コンペのデータはこれを元に Kaggle が生成したもので、
   コンペの Data ページで使用が認められている(CC0)。
 - 元データは学習には使わない。RealMLP の特徴量 1 列(年収ごとの元データでの購入率)を作るためだけに使う。
+  **元データなしでも上位15%に入る。** RealMLP の元データの列を、train だけで作る年収の購入率に置き換えると Private 0.94541 で 529〜572位相当(上位14.8〜16.0%。締切後の提出で確認)。本番(元データあり)は 0.94543 / 376位
   **ないとエラーにならずにこの列が抜け(39 列 → 38 列)、スコアが本番と一致しない**ので、必ず取得すること。
 - 取得後は「[現行ベストの再現コマンド](#現行ベストの再現コマンド)」で 4 モデルを学習(約 75 分)→ `uv run src/06_ensemble_hill_climbing.py` でアンサンブル。
 - ノートブックは、カーネルに `.venv` の Python を選べば動く。
