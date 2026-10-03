@@ -5,7 +5,6 @@ data/
 oof/
 submit/
 importance/
-datacheck/
 catboost_info/
 experiments_rejected/
 backup_*/

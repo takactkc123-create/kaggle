@@ -81,7 +81,7 @@ kaggle/                                  # リポジトリのルート(コンペ
     │   └── lookup-transformer-lead.md 【ignore】
     ├── .claude/skills/                  # 進め方と実験の手順(コンペに依存しない)
     ├── data/ 【ignore】                  # train.csv / test.csv / sample_submission.csv / 元データ
-    ├── datacheck/ 【ignore】             # EDA の図
+    ├── datacheck/                       # EDA の図(01_eda.py が出力)
     ├── oof/ 【ignore】                   # oof_<model>.npy / pred_<model>.npy(アンサンブル用)
     ├── submit/ 【ignore】                # submission_<model>.csv
     ├── importance/ 【ignore】            # feature importance の棒グラフと値(CSV)

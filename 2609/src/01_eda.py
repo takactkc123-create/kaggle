@@ -84,9 +84,10 @@ def plot_target_distribution(df, target, show=False):
                      palette=PALETTE, legend=False)
     for i, v in enumerate(counts.values):
         ax.text(i, v, f"{v:,}\n({v / counts.sum():.1%})", ha="center", va="bottom")
+    ax.set_ylim(0, counts.max() * 1.2)   # 棒の上のラベルがタイトルに重ならないよう余白を取る
     plt.title(f"Distribution of {target}")
     plt.ylabel("count")
-    save("01_target_distribution.png", show)
+    save("01_目的変数の分布.png", show)
 
 
 # カテゴリ列ごとの件数を、購入の有無で積み上げて描く
@@ -100,7 +101,7 @@ def plot_categorical_histograms(df, target, show=False):
         plt.xticks(rotation=45, ha="right")
         if i > 0:
             plt.legend().remove()
-    save("02_categorical_hist.png", show)
+    save("02_カテゴリ列の件数.png", show)
 
 
 # 数値列ごとの分布をヒストグラムで描く
@@ -116,7 +117,7 @@ def plot_numeric_histograms(df, target, show=False):
         plt.xticks(rotation=45, ha="right")
         if i > 0:
             plt.legend().remove()
-    save("03_numeric_hist.png", show)
+    save("03_数値列のヒストグラム.png", show)
 
 
 # 値の種類（ユニーク値）が多い数値列の分布を対数軸で描く
@@ -128,7 +129,7 @@ def plot_numeric_log_histograms(df, target, show=False):
                      bins=50, multiple="stack", palette=PALETTE)
         plt.title(f"Log Histogram of {col}")
         plt.xlabel(f"log1p({col})")
-    save("04_numeric_log_hist.png", show)
+    save("04_年収と通勤距離の対数ヒストグラム.png", show)
 
 
 # 数値列と目的変数の相関をヒートマップにする
@@ -140,7 +141,7 @@ def plot_correlation_heatmap(df, target, show=False):
     plt.title("Correlation Heatmap (target: Yes=1)")
     plt.xticks(rotation=45, ha="right")
     plt.yticks(rotation=0)
-    save("05_correlation_heatmap.png", show)
+    save("05_相関ヒートマップ.png", show)
 
 
 # 数値列の分布を、購入の有無で分けた箱ひげ図にする
@@ -150,7 +151,7 @@ def plot_boxplots_by_target(df, target, show=False):
         plt.subplot(n_rows, n_cols, i + 1)
         sns.boxplot(data=df, x=target, y=col, hue=target, palette=PALETTE, legend=False)
         plt.title(f"{col} by Target")
-    save("06_boxplots_by_target.png", show)
+    save("06_購入有無別の箱ひげ図.png", show)
 
 
 # カテゴリ列の値ごとの購入率を棒グラフにする
@@ -168,7 +169,7 @@ def plot_target_rate_by_category(df, target, show=False):
         plt.ylabel("P(Yes)")
         plt.xticks(rotation=45, ha="right")
         plt.legend(fontsize=8)
-    save("07_target_rate_by_category.png", show)
+    save("07_カテゴリ列の値ごとの購入率.png", show)
 
 
 # 数値列の値ごとの購入率を折れ線にする
@@ -190,7 +191,7 @@ def plot_target_rate_by_numeric(df, target, show=False):
         plt.title(f"Purchase rate by\n{col}" + ("" if col in LOW_CARD_NUM else " (50 bins)"))
         plt.xlabel(col)
         plt.ylabel("P(Yes)")
-    save("08_target_rate_by_numeric.png", show)
+    save("08_数値列の値ごとの購入率.png", show)
 
 
 # train と test の分布を重ねて比べる
@@ -212,7 +213,7 @@ def plot_train_test_distribution(tr, te, show=False):
                 plt.legend()
         plt.title(f"train vs test: {col}")
         plt.xticks(rotation=45, ha="right")
-    save("09_train_test_distribution.png", show)
+    save("09_trainとtestの分布比較.png", show)
 
 
 # EDA の図をすべて作って保存する
