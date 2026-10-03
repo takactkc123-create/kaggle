@@ -63,7 +63,7 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 
 ## ファイル構成の規約
 
-**ファイル名の先頭の番号が工程の順番**(一覧は README「【ソースコード】」)。
+**ファイル名の先頭の番号が工程の順番**(一覧は README「ソースコード」)。
 
 - CV は **StratifiedKFold(n_splits=5, shuffle=True, random_state=42)** で全モデル統一。**変更禁止**
 - 目的変数は `(train["Will_Buy_EV"] == "Yes").astype(int)`。`read_csv` までのフローは `02_baseline_*.py` と同一

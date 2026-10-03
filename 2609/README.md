@@ -19,7 +19,7 @@ EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二�
 |---|---|---|---|
 | LightGBM・XGBoost・RealMLP の順位平均(LightGBM に交互作用の制約) | **0.946310** | 0.94644 | **0.94543** |
 
-Private LB は test の 80%、Public LB は残り 20% で採点される。Private の順は CV の順と一致した(「[提出ごとの推移](#提出ごとの推移)」)。
+Private LB は test の 80%、Public LB は残り 20% で採点される。Private の順は CV の順と一致した(「[提出ごとのスコアの推移](#提出ごとのスコアの推移)」)。
 
 ### スコアアップに向けて取り組んだこと(ベースライン → アンサンブル)
 
@@ -34,7 +34,7 @@ Private LB は test の 80%、Public LB は残り 20% で採点される。Priva
 | 7 | ③ Feature Engineering | 重複する列の整理、交互作用 1 組、RealMLP に年収の Target Encoding | 0.946264 |
 | 8 | ④ Train and Evaluate | Feature Importance から、LightGBM に交互作用の制約(+0.000047) | **0.946310** |
 
-CV は、その時点で提出した構成の OOF AUC(1 は CatBoost 単体、3 以降はアンサンブル。下の「提出ごとの推移」と同じ値)。各施策の採否は ⑦ の paired DeLong 検定で判断した。
+CV は、その時点で提出した構成の OOF AUC(1 は CatBoost 単体、3 以降はアンサンブル。下の「提出ごとのスコアの推移」と同じ値)。各施策の採否は ⑦ の paired DeLong 検定で判断した。
 
 ## プロセス全体像
 
@@ -355,7 +355,7 @@ hill climbing で足し合わせる。選ばれた回数がそのまま重みに
 (弱くても非相関なら勝てる)。未採用の候補のうち最も非相関なものも提示するので、
 多様性が枯渇したときにどれを足せばよいかが分かる。
 
-**最終提出**: LightGBM 1/3 / XGBoost 1/3 / RealMLP 1/3 の順位平均(CatBoost は重み 0)。CV 0.946310 / Private 0.94543。各提出のスコアは「[提出ごとの推移](#提出ごとの推移)」。
+**最終提出**: LightGBM 1/3 / XGBoost 1/3 / RealMLP 1/3 の順位平均(CatBoost は重み 0)。CV 0.946310 / Private 0.94543。各提出のスコアは「[提出ごとのスコアの推移](#提出ごとのスコアの推移)」。
 
 ### hill climbing の重みの検証(DeLong 検定)
 
@@ -386,6 +386,26 @@ uv run src/07_compare_predictions.py --all realmlp          # 全候補と比較
 直接求めるので、**両者に共通のノイズが差し引きで消え**、AUC を別々に眺めるより桁違いに細かく差を
 見分けられる。
 
+**算出式**: 正例の予測を $X_1,\dots,X_m$、負例の予測を $Y_1,\dots,Y_n$ とする。
+
+```math
+\hat\theta=\frac{1}{mn}\sum_{i=1}^{m}\sum_{j=1}^{n}\psi(X_i,Y_j),\qquad \psi(x,y)=\begin{cases}1 & x>y \\ 1/2 & x=y \\ 0 & x<y\end{cases}
+```
+
+各行が AUC にどれだけ寄与したか(構造成分)を、モデルごとに求める。
+
+```math
+V_{10}(X_i)=\frac{1}{n}\sum_{j=1}^{n}\psi(X_i,Y_j),\qquad V_{01}(Y_j)=\frac{1}{m}\sum_{i=1}^{m}\psi(X_i,Y_j)
+```
+
+2 つのモデル A・B の構造成分の共分散 $S_{10}$・$S_{01}$(2×2 の行列)から、AUC の共分散と差の z 値を出す。
+
+```math
+S=\frac{S_{10}}{m}+\frac{S_{01}}{n},\qquad z=\frac{\hat\theta_B-\hat\theta_A}{\sqrt{S_{AA}+S_{BB}-2S_{AB}}}
+```
+
+同じ行で作った予測は $S_{AB}$(共分散)が大きいので、差の標準誤差が小さくなる。実装は `src/07_compare_predictions.py` の `delong_cov` / `paired_test`。
+
 | | 従来 | DeLong |
 |---|---|---|
 | ノイズ床(SE) | 0.00015 | **0.00003 前後** |
@@ -396,7 +416,7 @@ z=+8.48 で誤差でないことが確定した。
 
 ---
 
-## 提出ごとの推移
+## 提出ごとのスコアの推移
 
 | 提出 | CV | Public LB | Private LB | Private の順位(上位) |
 |---|---|---|---|---|
