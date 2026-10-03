@@ -306,7 +306,7 @@ uv run src/feature_importance.py lgbm --top 20    # モデルと表示する列�
 | XGBoost | `colsample_bytree=0.3, max_depth=5` | **+0.000163**(z=+8.5) |
 | CatBoost | — | 列サンプリングは**有害**(-0.00015)。対称木のため木全体が一斉に弱くなる |
 
-**木を弱くしたら `n_estimators` を増やして収束を取り直すこと。** 怠ると「効かない」と誤判定する。
+**木の本数を増やした理由**: 列を間引いて木を弱くすると、収束までに要る本数が増える。本数を据え置くと、効く施策でも効かないと判定してしまうため、early stopping で本数を取り直した。
 
 **交互作用の制約が効いた**(2026-09-29、Feature Importance から立てた仮説)。重要度の 7〜9 割を補助金と環境意識が占めるので、年収系の列(年収・その Smooth Keys・digit・Count・Target Encoding)とそれ以外の列を、同じ木の枝で組み合わせないようにした。年収の細部が別の枝で学ばれる。
 
@@ -357,18 +357,18 @@ hill climbing で足し合わせる。選ばれた回数がそのまま重みに
 
 **最終提出**: LightGBM 1/3 / XGBoost 1/3 / RealMLP 1/3 の順位平均(CatBoost は重み 0)。CV 0.946310 / Private 0.94543。各提出のスコアは「[提出ごとの推移](#提出ごとの推移)」。
 
-> ⚠ **hill climbing の出力をそのまま信じないこと。** 貪欲法は OOF 上の偶然を拾う。
-> CV +0.000009(z=+1.57、有意でない)の構成を提出したところ、Public は -0.00002、Private も -0.00001 と逆に動いた。
-> **必ず ⑦ の DeLong 検定で有意性を確認してから提出する。**
+### hill climbing の重みの検証(DeLong 検定)
 
-> `06_ensemble_hill_climbing.py` は実行のたびに `submit/submission_hillclimb.csv` を上書きする。
-> 不採用の実験結果は `experiments_rejected/` に退避して候補から外すこと。
+貪欲法は OOF 上の偶然の当たりも拾うため、重みは ⑦ の DeLong 検定で有意性を確かめてから採用した。
+有意でない構成(CV +0.000009、z=+1.57)を提出すると、Public -0.00002 / Private -0.00001 で下がった。
 
 ### 提出
 
 ```bash
 kaggle competitions submit -c playground-series-s6e9 -f submit/submission_hillclimb.csv -m "<説明>"
 ```
+
+`06_ensemble_hill_climbing.py` は実行のたびに `submit/submission_hillclimb.csv` を上書きし、`oof/` の予測をすべて候補にする。そのため、不採用の予測は `experiments_rejected/` に移して候補から外している。
 
 ## ⑦ Paired DeLong Test(対応のある DeLong 検定)
 

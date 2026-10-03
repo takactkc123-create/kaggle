@@ -7,8 +7,8 @@
 採用されたモデル間の**順位相関**も併せて出力する。相関が高いほど同質で、
 足してもアンサンブルは伸びない(弱くても非相関なら勝てる = diversity beats strength)。
 
-⚠ この出力をそのまま信じないこと。貪欲法は OOF 上の偶然を拾う。
-採用を判断する前に必ず `07_compare_predictions.py` の DeLong 検定で有意性を確認する。
+出力の重みは、`07_compare_predictions.py` の DeLong 検定(工程⑦)で有意性を確かめてから採用する。
+貪欲法は OOF 上の偶然も拾うため。
 """
 
 import glob
