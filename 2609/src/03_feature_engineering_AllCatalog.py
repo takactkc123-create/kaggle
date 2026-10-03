@@ -1,29 +1,28 @@
-"""S6E9 統合 FE カタログ (FE Lead 管轄).
+"""Feature Engineering のカタログ(全モデル横断)。本番の学習・予測・アンサンブルには関わらない。
 
-4本の `fe_<model>.py` に散らばっていた FE 関数を、**モデル非依存の統一インターフェース**
-として1箇所にまとめたもの。既存の `03_feature_engineering_lgbm.py` / `03_feature_engineering_xgb.py` / `03_feature_engineering_catboost.py` /
-`03_feature_engineering_realmlp.py` は一切変更していない。このファイルは独立した集約版カタログであり、
-横展開テスト (`tools/crosstest_gbdt.py`) の入力になる。
+1. 列名の出力: 各 `04_train_and_evaluate_<model>.py` の `--dump-features` が `dump()` を呼び、fold 1 の列名を
+   `docs/features_<tag>.json` に書く(学習はしない)。`classify()` は列名を特徴量の種類に分ける
+2. 採否表: 特徴量の関数ごとの採否(`FUNC_STATUS`。〇 採用 / ✖ 不採用 / — 補助)。
+   `verify_status()` が採否表と `docs/features_<tag>.json` の矛盾を検出する(03 のノートブック 03-7 章)
+3. 不採用(記録): 検証したうえで本番に入れなかった関数。再検証しないための記録で、本番では import しない。
+   各モデルから移した関数は、名前の末尾にもとのモデル名が付いている
 
-各関数の docstring に **実装差分** (どのモデル版と何が違うか) を明記している。
-差分サマリは `fe_results_all.md` を参照。
-
-規約:
-- 関数は「特徴量を作る」ことだけを行う。cat_features 指定 / category dtype 化 /
-  標準化などモデル固有の処理は呼び出し側の責務。
-- 目的変数を使う変換 (TE) は必ず fold 内 fit。学習行には inner-OOF を当てる。
+本番で使う特徴量の関数は、各モデルの `03_feature_engineering_<model>.py` にある。
+ファイル名が数字で始まるので、`importlib.import_module("03_feature_engineering_AllCatalog")` で読み込む。
 """
 
 from __future__ import annotations
 
 import itertools
+import json
+import os
+import re
 
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
 TARGET = "Will_Buy_EV"
-ID = "id"
 
 NUMERIC_COLS = [
     "Age",
@@ -44,309 +43,234 @@ CATEGORICAL_COLS = [
     "Range_Anxiety_Level",
 ]
 
-# 値の種類（ユニーク値）が少ない数値列 (catify / 交互作用キーの候補)
-# fe_lgbm.LOW_CARD_NUMERIC と fe_catboost.LOWCARD_NUM_COLS は同一内容 (順序のみ違う)
-LOWCARD_NUM_COLS = [
-    "Age",
-    "Number_of_Cars_Owned",
-    "Charging_Stations_Near_Home",
-    "Charging_Stations_Near_Work",
-    "Environmental_Concern_Level",
+
+# ============================================================================
+# 1. 列名の出力 / 2. 採否表
+# ============================================================================
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUT_DIR = os.path.join(ROOT, "docs")
+
+# 生データの13列(id / 目的変数を除く)
+RAW_COLS = NUMERIC_COLS + CATEGORICAL_COLS
+
+# 判定は上から順に適用する(先に当たったものを採用)。順序に意味がある:
+# 例 `Income_/_100_floor_` は「_/_」を含むが四則演算ではなく Smooth Key なので先に拾う。
+_RULES = [
+    ("元データ由来",            re.compile(r"orig$|org_mean", re.I)),
+    ("Target Encoding",        re.compile(r"(^te\d*_)|(_te$)|(_te(a|\d+)$)|(TE$)|(_target)")),
+    ("Count / Frequency",      re.compile(r"(^cnt_)|(_ce$)|(^freq_)|(_count$)", re.I)),
+    ("digit / 小数の分解",       re.compile(r"(^d-?\d+_)|(_d-?\d+$)|digit|(_decimal$)", re.I)),
+    ("Smooth Keys(粗い解像度)", re.compile(r"(_floor_?$)|(_sk\d*$)|(^sk_)|(^inc_f\d+$)|(^commute_f\d+$)")),
+    ("catify(数値→カテゴリ)",    re.compile(r"_cat_?$")),
+    ("ビン分割",                re.compile(r"_bin_?$", re.I)),
+    ("フラグ",                  re.compile(r"(^|_)is_", re.I)),
+    ("四則演算",                re.compile(r"_(diff|ratio|sum|avg|prod)_|_/_|_[-+*]_", re.I)),
 ]
 
-HIGHCARD_NUM_COLS = ["Annual_Income_USD", "Daily_Commute_km"]
 
-ALL_COLS = NUMERIC_COLS + CATEGORICAL_COLS
-
-
-# ==========================================================================
-# 0. データ読み込み (baseline_*.py と同一フロー)
-# ==========================================================================
-# train.csv と test.csv を読み込む
-def load_data(data_dir: str = "data"):
-    """data/train.csv と data/test.csv を読む (02_baseline_*.py と同じフロー)."""
-    train = pd.read_csv(f"{data_dir}/train.csv")
-    test = pd.read_csv(f"{data_dir}/test.csv")
-    return train, test
-
-
-# 目的変数を 0/1 の配列にする
-def get_y(train: pd.DataFrame) -> np.ndarray:
-    """目的変数を 0/1 の ndarray にする."""
-    return (train[TARGET] == "Yes").astype(int).to_numpy()
+# 列名を特徴量の種類に振り分ける
+def classify(name: str) -> str:
+    """列名を FE の種類に振り分ける。未知のものは『その他の生成列』。"""
+    if name in RAW_COLS:
+        return "① 生の列"
+    for label, pat in _RULES:
+        if pat.search(name):
+            return label
+    # 生の列名が 2 つ以上埋まっていれば連結キー(交互作用)とみなす
+    if sum(1 for c in RAW_COLS if c in name) >= 2:
+        return "交互作用キー"
+    return "その他の生成列"
 
 
-# ==========================================================================
-# 1. エンコーディング方式 (モデル固有の入力形式)
-#    出典: fe_xgb.as_native_category / as_ordinal / as_onehot
-#    実測: 3方式とも単体では同点 (±0.0001)。多様性用に散らす軸として使う。
-# ==========================================================================
-# カテゴリ列を train・test 共通の水準で category 型にする
-def as_native_category(tr, te, cols=None):
-    """train/test 共通のカテゴリ集合で category dtype 化 (LightGBM / XGB enable_categorical)."""
-    cols = CATEGORICAL_COLS if cols is None else cols
-    tr, te = tr.copy(), te.copy()
-    for c in cols:
-        cats = pd.concat([tr[c], te[c]]).astype("category").cat.categories
-        tr[c] = pd.Categorical(tr[c], categories=cats)
-        te[c] = pd.Categorical(te[c], categories=cats)
-    return tr, te
+# Target Encoding の列名から元のキー名を取り出す
+def te_key_of(name: str) -> str:
+    """TE 列から元になったキー名を取り出す。
 
+    smooth の付き方がモデルごとに違うので、3通りとも剥がして正規化する::
 
-# カテゴリ列を整数コードにする
-def as_ordinal(tr, te, cols=None):
-    """整数コード化 (XGBoost の最終採用方式)."""
-    cols = CATEGORICAL_COLS if cols is None else cols
-    tr, te = tr.copy(), te.copy()
-    for c in cols:
-        cats = pd.concat([tr[c], te[c]]).astype("category").cat.categories
-        tr[c] = pd.Categorical(tr[c], categories=cats).codes.astype("int16")
-        te[c] = pd.Categorical(te[c], categories=cats).codes.astype("int16")
-    return tr, te
-
-
-# 列を文字列にする(CatBoost の cat_features 用)
-def as_str(frames, cols) -> None:
-    """文字列化 (CatBoost cat_features / catify 用). in-place."""
-    for f in frames:
-        for c in cols:
-            f[c] = f[c].astype(str)
-
-
-# ==========================================================================
-# 2. キーフレーム (厳密値 TE / Count のグループキー)
-#    出典: fe_lgbm.make_key_frame
-#    差分: fe_xgb / fe_catboost は生データフレームを直接キーに使い astype(str) で
-#          キー化している。数値的には等価だが str 化は遅い。ここでは int キー方式
-#          (fe_lgbm 版) を採る。さらに小数1桁を ×10 して整数化し float 等価判定の
-#          揺れを完全に排除している (fe_lgbm 版は float のまま groupby)。
-# ==========================================================================
-# 13 列すべてを値のまま整数キーにしたフレームを作る
-def make_key_frame(train: pd.DataFrame, test: pd.DataFrame):
-    """13列すべてを「厳密値のまま」整数キー化したフレームを返す (S6E8 のブレークスルー)."""
-    keys_tr = pd.DataFrame(index=train.index)
-    keys_te = pd.DataFrame(index=test.index)
-    for c in NUMERIC_COLS:
-        keys_tr[c] = np.rint(train[c].to_numpy(dtype="float64") * 10).astype("int64")
-        keys_te[c] = np.rint(test[c].to_numpy(dtype="float64") * 10).astype("int64")
-    for c in CATEGORICAL_COLS:
-        cats = pd.concat([train[c], test[c]]).astype("category").cat.categories
-        keys_tr[c] = pd.Categorical(train[c], categories=cats).codes.astype("int16")
-        keys_te[c] = pd.Categorical(test[c], categories=cats).codes.astype("int16")
-    return keys_tr, keys_te
-
-
-# ==========================================================================
-# 3. Smooth Keys (値の種類（ユニーク値）が多い数値列の粗い解像度キー)  reference_URL.md S-3
-#    ★ 4モデルで実装が食い違っている箇所 ★
-#      fe_lgbm     : inc/10,  inc/100,  inc/1000,  floor(km)
-#      fe_xgb      : inc/100, inc/1000, inc/10000, floor(km)
-#      fe_catboost : floor(inc) <- 厳密値キーと**ビット同一の重複**, inc/100, inc/1000, floor(km)
-#      fe_realmlp  : inc/100, inc/1000, inc/10000, floor(km/5)  ※TEキーでなくcat特徴として
-#    Annual_Income_USD は整数値なので floor(inc) == inc であり CatBoost の sk_inc_1 は
-#    無駄列。ここでは和集合 {10, 100, 1000, 10000} を既定にし scales で選択可能にする。
-# ==========================================================================
-SMOOTH_KEY_SCALES = (10, 100, 1000, 10000)
-
-
-# 年収・通勤距離を粗く丸めたキー(Smooth Keys)を追加する
-def add_smooth_keys(keys: pd.DataFrame, df: pd.DataFrame, scales=SMOOTH_KEY_SCALES,
-                    commute: bool = True) -> pd.DataFrame:
-    """年収・通勤距離を粗く丸めたキーを keys に追加して返す."""
-    keys = keys.copy()
-    inc = df["Annual_Income_USD"].to_numpy(dtype="float64")
-    for s in scales:
-        keys[f"sk_inc{s}"] = np.floor(inc / s).astype("int64")
-    if commute:
-        km = df["Daily_Commute_km"].to_numpy(dtype="float64")
-        keys["sk_commute"] = np.floor(km).astype("int64")
-    return keys
-
-
-# add_smooth_keys が作るキー名の一覧を返す
-def smooth_key_names(scales=SMOOTH_KEY_SCALES, commute: bool = True):
-    """add_smooth_keys が作るキー名の一覧を返す."""
-    out = [f"sk_inc{s}" for s in scales]
-    return out + (["sk_commute"] if commute else [])
-
-
-# ==========================================================================
-# 4. digit features  ((x // 10**k) % 10)  reference_URL.md S-1
-#    出典: fe_catboost.add_digits (整数演算版) を採用。
-#    差分: fe_lgbm / fe_xgb は float 演算 (x * 10**-k を floor) で、23.4 のような値で
-#          丸め誤差が下位桁に漏れうる。整数版の方が安全。
-#    ★重要★ 単独では効かず Triple TE との併用で初めて効く。
-#            さらに「1値あたりの行数」が前提なのでサブサンプル検証は原理的に無効。
-# ==========================================================================
-DIGIT_KS = list(range(-4, 4))
-
-
-# 数値列を桁ごとの列(digit features)にばらす
-def add_digit_features(df: pd.DataFrame, cols=None, ks=None) -> pd.DataFrame:
-    """数値列を桁ごとにばらした int8 列を作る ((x // 10**k) % 10)."""
-    cols = NUMERIC_COLS if cols is None else cols
-    ks = DIGIT_KS if ks is None else ks
-    out = {}
-    for c in cols:
-        x = pd.to_numeric(df[c], errors="coerce").fillna(0.0).to_numpy()
-        scaled = np.rint(x * 10_000).astype(np.int64)  # 小数4桁分の余裕
-        for k in ks:
-            out[f"{c}_d{k}"] = ((scaled // (10 ** (k + 4))) % 10).astype("int8")
-    return pd.DataFrame(out, index=df.index)
-
-
-# すべてのフレームで値が一定の列を落とし、残った列名を返す
-def drop_constant_cols(frames, cols):
-    """全フレームで定数の列を落とす (学習を遅くするだけなので)。残った列名を返す."""
-    kept = []
-    for c in cols:
-        if any(f[c].nunique(dropna=False) > 1 for f in frames):
-            kept.append(c)
-        else:
-            for f in frames:
-                f.drop(columns=[c], inplace=True)
-    return kept
-
-
-# ==========================================================================
-# 5. Count / Frequency Encoding (教師なし -> train+test 結合で fit、リークなし)
-#    出典: fe_lgbm.count_encode
-#    差分: fe_catboost は freq=False (生カウント)、fe_lgbm/fe_xgb は freq=True。
-#          木にとっては単調変換で等価だが、**NN ではスケールが効くので freq 推奨**。
-#          fe_realmlp は Annual_Income_USD 1列のみ、しかも train だけで fit している
-#          (= test の頻度情報を捨てている)。
-#    実測: LGBM +0.00083 / XGB +0.00049 / CatBoost -0.00017(無効) / RealMLP 未検証。
-# ==========================================================================
-# キーの値ごとの出現回数を列にする(train と test をまとめて数える)
-def count_encode(keys_tr: pd.DataFrame, keys_te: pd.DataFrame, cols, freq: bool = True):
-    """出現頻度を列にする. 目的変数を使わないので train+test でまとめて数える."""
-    out_tr = pd.DataFrame(index=keys_tr.index)
-    out_te = pd.DataFrame(index=keys_te.index)
-    n_total = len(keys_tr) + len(keys_te)
-    for c in cols:
-        vc = pd.concat([keys_tr[c], keys_te[c]], ignore_index=True).value_counts()
-        a = keys_tr[c].map(vc).astype("float32").to_numpy()
-        b = keys_te[c].map(vc).astype("float32").to_numpy()
-        if freq:
-            a, b = a / n_total, b / n_total
-        out_tr[f"cnt_{c}"] = a
-        out_te[f"cnt_{c}"] = b
-    return out_tr, out_te
-
-
-# ==========================================================================
-# 6. Target Encoding (fold 内 fit + 学習行は inner-OOF = Out-of-Fold TE)
-#    出典: fe_lgbm.target_encode_fold (XGB で +0.00108 を出した実装形)
-#    差分: 「単純 fold 内 fit」版 (学習行にも fold 全体の統計を当てる) は学習行に
-#          楽観バイアスが乗り、Out-of-Fold 版より **-0.00108** 劣る。
-#          fe_catboost.target_encode / fe_xgb.fit_apply_te_cv_nested_multi も同じ
-#          Out-of-Fold 方式。ここでは (sum,count) 集計を smooth 間で共有する fe_lgbm 版を
-#          採用 (Triple TE の追加コストがほぼゼロになる)。
-#    Triple TE = smooth を auto/10/100 の3系統「同時投入」 (選ぶのではない)。
-# ==========================================================================
-# キーごとの購入者数と行数を集計する
-def _te_agg(arr, y):
-    return pd.DataFrame({"k": arr, "y": y}).groupby("k", observed=True)["y"].agg(
-        ["sum", "count"]
-    )
-
-
-# 集計から平滑化した購入率の対応表を作る
-def _te_map(agg, prior, smooth):
-    cnt = agg["count"].to_numpy(dtype="float64")
-    s = agg["sum"].to_numpy(dtype="float64")
-    if isinstance(smooth, str):  # "auto" = sklearn TargetEncoder の経験ベイズ則
-        p_i = s / cnt
-        m = (p_i * (1.0 - p_i)) / (prior * (1.0 - prior))
-    else:
-        m = float(smooth)
-    return pd.Series((s + prior * m) / (cnt + m), index=agg.index)
-
-
-# 平滑化の強さを列名用の文字列にする
-def _smooth_tag(sm):
-    if isinstance(sm, str):
-        return sm
-    f = float(sm)
-    return str(int(f)) if f == int(f) else str(f).replace(".", "p")
-
-
-# fold 内で Out-of-Fold の Target Encoding を作る
-def target_encode_fold(keys_fit: pd.DataFrame, y_fit, other_frames, cols,
-                       smooths=(20.0,), n_inner: int = 5, seed: int = 42):
-    """リークフリー TE。戻り値 (te_fit, [te_other, ...])。
-
-    keys_fit     : 現在の outer fold の**学習行**のキーフレーム
-    other_frames : 同じ統計を当てるフレーム (通常 [valid_keys, test_keys])
-    smooths      : float または "auto" のリスト。複数指定で Triple TE。
+        LightGBM  te_Age_sauto   te_sk_inc1000_s100
+        XGBoost   Age_tea        inc_f1000_te100
+        CatBoost  te10_Age       te100_sk_inc_1000
     """
-    smooths = list(smooths) if isinstance(smooths, (list, tuple)) else [smooths]
-    multi = len(smooths) > 1
-    y_fit = np.asarray(y_fit)
-    prior = float(y_fit.mean())
-    te_fit = pd.DataFrame(index=keys_fit.index)
-    te_others = [pd.DataFrame(index=f.index) for f in other_frames]
+    s = re.sub(r"^te(a|\d+)?_", "", name)      # CatBoost / LightGBM の接頭辞
+    s = re.sub(r"_te(a|\d+)?$", "", s)         # XGBoost の接尾辞
+    s = re.sub(r"_s(auto|\d+)$", "", s)        # LightGBM の smooth タグ
+    s = re.sub(r"_TE$", "", s)                 # RealMLP
+    return s
 
-    inner = StratifiedKFold(n_splits=n_inner, shuffle=True, random_state=seed)
-    inner_splits = list(inner.split(np.zeros(len(y_fit)), y_fit))
 
-    for c in cols:
-        arr = keys_fit[c].to_numpy()
-        names = {sm: (f"te_{c}_s{_smooth_tag(sm)}" if multi else f"te_{c}")
-                 for sm in smooths}
+# 列名の一覧を docs/features_<tag>.json に書き出す
+def dump(tag: str, model: str, columns, cat_features=None, note: str = "") -> str:
+    """列名一覧を docs/features_<tag>.json に書き出してパスを返す。"""
+    cols = [str(c) for c in columns]
+    os.makedirs(OUT_DIR, exist_ok=True)
+    path = os.path.join(OUT_DIR, f"features_{tag}.json")
+    payload = {
+        "tag": tag,
+        "model": model,
+        "note": note,
+        "n_features": len(cols),
+        "cat_features": sorted(str(c) for c in (cat_features or [])),
+        "columns": cols,
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=1)
+    print(f"[dump-features] {model}: {len(cols)} 列 -> docs/features_{tag}.json", flush=True)
+    return path
 
-        vals = {sm: np.full(len(arr), prior, dtype="float32") for sm in smooths}
-        for in_idx, out_idx in inner_splits:
-            agg = _te_agg(arr[in_idx], y_fit[in_idx])
-            s_out = pd.Series(arr[out_idx])
-            for sm in smooths:
-                vals[sm][out_idx] = (
-                    s_out.map(_te_map(agg, prior, sm)).fillna(prior)
-                    .to_numpy(dtype="float32")
-                )
-        for sm in smooths:
-            te_fit[names[sm]] = vals[sm]
 
-        agg_full = _te_agg(arr, y_fit)
-        for sm in smooths:
-            m_full = _te_map(agg_full, prior, sm)
-            for f, out in zip(other_frames, te_others):
-                out[names[sm]] = (
-                    f[c].map(m_full).fillna(prior).to_numpy(dtype="float32")
-                )
-    return te_fit, te_others
+# 書き出した列名の JSON を読む
+def load(tag: str) -> dict:
+    """ダンプ済み JSON を読む(ノートブック用)。"""
+    with open(os.path.join(OUT_DIR, f"features_{tag}.json"), encoding="utf-8") as f:
+        return json.load(f)
+
+# ---------------------------------------------------------------------------
+# FE 関数の採否
+# ---------------------------------------------------------------------------
+# `03_feature_engineering_<model>.py` には本番で使う関数だけを置き、検証して捨てた施策は
+# このファイルの「不採用(記録)」(3 章)に、名前の末尾にモデル名を付けて移してある(2026-09-28)。
+# どれが本番で生きているのかを、ここに一覧で持つ。
+#
+#   ADOPTED  = 本番の構成で実際に呼ばれている
+#   REJECTED = 検証したうえで不採用。根拠を併記する(再検証不要)
+#   SUPPORT  = 補助・基盤。単体で採否を論じるものではない
+#
+# **この表は手で保つ。** ただし列を作る関数については `verify_status()` が
+# `docs/features_<tag>.json` と突き合わせて矛盾を検出できる。
+
+ADOPTED, REJECTED, SUPPORT = "〇", "✖", "—"
+
+# (モジュール, 関数名) -> (記号, 根拠)
+FUNC_STATUS = {
+    # ---- 03_feature_engineering_lgbm.py (本番: 04 が te_plan() どおりに必要な列だけ作る) ----
+    ("03_feature_engineering_lgbm", "load_data"):               (SUPPORT,  "読み込み"),
+    ("03_feature_engineering_lgbm", "make_categorical"):        (ADOPTED,  "native category として渡す"),
+    ("03_feature_engineering_lgbm", "make_key_frame"):          (ADOPTED,  "TE / Count のキー生成"),
+    ("03_feature_engineering_lgbm", "add_digit_features"):      (ADOPTED,  "15列(うち元の列と同じ2列は dedup で除外)"),
+    ("03_feature_engineering_lgbm", "add_smooth_keys"):         (ADOPTED,  "TEキー4本を追加 (sk)"),
+    ("03_feature_engineering_lgbm", "count_encode"):            (ADOPTED,  "+0.00083"),
+    ("03_feature_engineering_lgbm", "target_encode_fold"):      (ADOPTED,  "最大の改善要因"),
+    ("03_feature_engineering_lgbm", "single_keys"):             (ADOPTED,  "te1 / cnt1 のキー集合"),
+    ("03_feature_engineering_lgbm", "te_plan"):               (ADOPTED,  "本番の Target Encoding の設計(キーと平滑化)"),
+    ("03_feature_engineering_lgbm", "target_encode_plan"):    (ADOPTED,  "te_plan() のとおりに Target Encoding を作る"),
+
+    # ---- 03_feature_engineering_xgb.py (本番: 04 が te_plan() どおりに必要な列だけ作る) ----
+    ("03_feature_engineering_xgb", "as_ordinal"):               (ADOPTED,  "XGBoost の最終採用方式"),
+    ("03_feature_engineering_xgb", "add_count_encoding"):       (ADOPTED,  "+0.00049"),
+    ("03_feature_engineering_xgb", "digit_block"):              (SUPPORT,  "add_digit_features の内部"),
+    ("03_feature_engineering_xgb", "add_digit_features"):       (ADOPTED,  "16列 (小数第1位を含む。うち2列は dedup で除外)"),
+    ("03_feature_engineering_xgb", "make_smooth_keys"):         (ADOPTED,  "TEキー4本を追加"),
+    ("03_feature_engineering_xgb", "prepare_te_codes"):         (SUPPORT,  "TEキーの整数コード化(高速化)"),
+    ("03_feature_engineering_xgb", "fit_apply_te_cv_nested_multi"): (ADOPTED, "本番の Out-of-Fold Triple TE"),
+    ("03_feature_engineering_xgb", "te_plan"):                (ADOPTED,  "本番の Target Encoding の設計(キーと平滑化)"),
+    ("03_feature_engineering_xgb", "fit_apply_te_cv_nested_plan"): (ADOPTED,  "te_plan() のとおりに Target Encoding を作る"),
+
+    # ---- 03_feature_engineering_catboost.py (本番: 04 が te_plan() どおりに必要な列だけ作る) ----
+    ("03_feature_engineering_catboost", "add_digits"):          (ADOPTED,  "+0.00061。既定ビン64が粗いため効いた"),
+    ("03_feature_engineering_catboost", "drop_constant"):       (SUPPORT,  "定数列の除去"),
+    ("03_feature_engineering_catboost", "add_smooth_keys"):     (ADOPTED,  "TEキー4本を追加 (skeys)"),
+    ("03_feature_engineering_catboost", "target_encode"):       (ADOPTED,  "te_all + te3 (Triple smooth)"),
+    ("03_feature_engineering_catboost", "cast_to_str"):         (ADOPTED,  "catify +0.00170。CatBoost 単体最大"),
+    ("03_feature_engineering_catboost", "te_plan"):           (ADOPTED,  "本番の Target Encoding の設計(キーと平滑化)"),
+    ("03_feature_engineering_catboost", "target_encode_plan"): (ADOPTED,  "te_plan() のとおりに Target Encoding を作る"),
+
+    # ---- 03_feature_engineering_realmlp.py (本番: 追加フラグなし) ----
+    ("03_feature_engineering_realmlp", "build_features"):       (ADOPTED,  "catify / ビン分割 / Smooth Keys を一括生成"),
+    ("03_feature_engineering_realmlp", "load_orig"):            (ADOPTED,  "元データ由来の org_mean。アンサンブル +0.000022"),
+
+    # ---- 03_feature_engineering_AllCatalog.py の「不採用(記録)」(横断で試したもの) ----
+    ("03_feature_engineering_AllCatalog", "arithmetic_meaningful"):    (REJECTED, "四則演算。打ち止め"),
+    ("03_feature_engineering_AllCatalog", "interaction_keys"):         (REJECTED, "交互作用キー。全滅"),
+    ("03_feature_engineering_AllCatalog", "cat_pairs"):                (REJECTED, "同上のペア列挙"),
+    ("03_feature_engineering_AllCatalog", "add_income_neighborhood"): (REJECTED, "年収の近傍統計。GBDT は誤差、RealMLP は単体 +0.000077 だがアンサンブル ±0"),
+
+    # ---- 03_feature_engineering_AllCatalog.py の「不採用(記録)」(各モデルから移した関数。名前の末尾がもとのモデル) ----
+    ("03_feature_engineering_AllCatalog", "add_arithmetic_meaningful_lgbm"): (REJECTED, "四則演算 -0.00014。打ち止め"),
+    ("03_feature_engineering_AllCatalog", "add_arithmetic_all_pairs_lgbm"): (REJECTED, "全ペア四則演算。同上"),
+    ("03_feature_engineering_AllCatalog", "add_group_means_lgbm"):         (REJECTED, "行方向の平均。効果なし"),
+    ("03_feature_engineering_AllCatalog", "add_subsidy_products_lgbm"): (REJECTED, "補助金との積。+0.000009 (z=+0.65) で誤差"),
+    ("03_feature_engineering_AllCatalog", "pair_keys_lgbm"):               (REJECTED, "2列交互作用TE(全ペア)。全滅。自宅充電×自宅スタンド数の1組だけは te2home で最終構成に採用"),
+    ("03_feature_engineering_AllCatalog", "triple_keys_lgbm"):             (REJECTED, "3列交互作用TE。全滅"),
+    ("03_feature_engineering_AllCatalog", "all_columns_key_lgbm"):         (REJECTED, "行フィンガープリント。全行ユニークで原理的に不可"),
+    ("03_feature_engineering_AllCatalog", "fingerprint_key_lgbm"):         (REJECTED, "同上(部分集合版)"),
+    ("03_feature_engineering_AllCatalog", "make_base_xgb"):                (REJECTED, "native category の素のフレーム。ordinal を採用したので使っていない"),
+    ("03_feature_engineering_AllCatalog", "as_native_category_xgb"):       (REJECTED, "ordinal と差なし。非相関性を狙い ordinal を採用"),
+    ("03_feature_engineering_AllCatalog", "as_onehot_xgb"):                (REJECTED, "列が増えるだけで効果なし"),
+    ("03_feature_engineering_AllCatalog", "add_arithmetic_xgb"):           (REJECTED, "四則演算。打ち止め"),
+    ("03_feature_engineering_AllCatalog", "all_numeric_pairs_xgb"):        (REJECTED, "同上のペア列挙"),
+    ("03_feature_engineering_AllCatalog", "make_interaction_keys_xgb"):    (REJECTED, "交互作用キー。全滅"),
+    ("03_feature_engineering_AllCatalog", "cat_pairs_xgb"):                (REJECTED, "同上のペア列挙"),
+    ("03_feature_engineering_AllCatalog", "fit_target_encoding_xgb"):      (REJECTED, "Out-of-Fold でない旧版。Out-of-Fold 版が +0.00108 で置き換え"),
+    ("03_feature_engineering_AllCatalog", "apply_target_encoding_xgb"):    (REJECTED, "同上"),
+    ("03_feature_engineering_AllCatalog", "fit_apply_te_cv_xgb"):          (REJECTED, "同上"),
+    ("03_feature_engineering_AllCatalog", "fit_apply_te_cv_nested_xgb"):   (REJECTED, "単一 smooth 版。Triple TE が置き換え"),
+    ("03_feature_engineering_AllCatalog", "fit_target_encoding_multi_xgb"): (REJECTED, "同上(Out-of-Fold でない複数smooth版)"),
+    ("03_feature_engineering_AllCatalog", "apply_target_encoding_multi_xgb"): (REJECTED, "同上"),
+    ("03_feature_engineering_AllCatalog", "add_row_aggregates_xgb"):       (REJECTED, "行方向の集約。効果なし"),
+    ("03_feature_engineering_AllCatalog", "add_arithmetic_catboost"):      (REJECTED, "四則演算 -0.00099。最も悪化"),
+    ("03_feature_engineering_AllCatalog", "add_interactions_catboost"):    (REJECTED, "交互作用キー。全滅"),
+    ("03_feature_engineering_AllCatalog", "add_count_encoding_catboost"):  (REJECTED, "内部の Ordered TS と重複して無効"),
+    ("03_feature_engineering_AllCatalog", "build_te_key_frame_realmlp"):   (REJECTED, "--exact-te 用。単体 +0.000156 だがアンサンブル寄与ゼロ"),
+    ("03_feature_engineering_AllCatalog", "target_encode_highcard_realmlp"): (REJECTED, "同上。GBDTとの相関が上がり多様性を損なう"),
+    ("03_feature_engineering_AllCatalog", "realmlp_rejected_extras"): (REJECTED, "RealMLP の digit・通勤距離÷年齢・通勤距離/5。いずれも誤差"),
+    ("03_feature_engineering_AllCatalog", "orig_income_rate_gbdt"):   (REJECTED, "元データの年収ごとの購入率を GBDT に。LightGBM -0.000003 / XGBoost -0.000005 / CatBoost -0.000012 で誤差(2026-09-29)")
+}
+
+
+# 関数の採否(記号と根拠)を返す
+def status_of(module: str, func: str):
+    """(記号, 根拠) を返す。未登録なら ("?", "未分類")。"""
+    return FUNC_STATUS.get((module, func), ("?", "未分類"))
+
+
+# 「この関数が採用されていれば、この種類の列が本番に存在するはず」という対応。
+# verify_status() がこれを使って表と実データの矛盾を検出する。
+_EXPECT = {
+    "digit / 小数の分解": ["add_digit_features", "add_digits", "digit_block"],
+    "Count / Frequency": ["count_encode", "add_count_encoding"],
+    # RealMLP の target_encode_highcard はここに入れない。RealMLP の本番にも TE 列は
+    # 2本あるが、それは 04_train_and_evaluate_realmlp.py が sklearn の TargetEncoder で作るもので、
+    # この関数(--exact-te 専用)とは別経路。種類の有無では判別できない。
+    "Target Encoding":   ["target_encode_fold", "target_encode",
+                          "fit_apply_te_cv_nested_multi"],
+    "四則演算":           ["add_arithmetic_meaningful", "add_arithmetic_all_pairs",
+                          "add_arithmetic", "arithmetic_meaningful"],
+    "交互作用キー":        ["pair_keys", "triple_keys", "make_interaction_keys",
+                          "add_interactions", "interaction_keys"],
+}
+_MODULE_OF_TAG = {"lgbm": "03_feature_engineering_lgbm", "xgb": "03_feature_engineering_xgb",
+                  "catboost": "03_feature_engineering_catboost", "realmlp": "03_feature_engineering_realmlp"}
+
+
+# 採否表と docs/features_<tag>.json の矛盾を洗い出す
+def verify_status(tags=("lgbm", "xgb", "catboost", "realmlp")):
+    """採否表と docs/features_<tag>.json の矛盾を洗い出して行のリストで返す。
+
+    「〇 なのにその種類の列が 1 つも無い」「✖ なのに列がある」を検出する。
+    空リストなら矛盾なし。
+    """
+    rows = []
+    for tag in tags:
+        mod = _MODULE_OF_TAG[tag]
+        groups = {classify(c) for c in load(tag)["columns"]}
+        for group, funcs in _EXPECT.items():
+            for fn in funcs:
+                if (mod, fn) not in FUNC_STATUS:
+                    continue
+                mark, why = FUNC_STATUS[(mod, fn)]
+                if mark == SUPPORT:
+                    continue
+                present = group in groups
+                if mark == ADOPTED and not present:
+                    rows.append(f"{mod}.{fn}: 〇 だが本番に「{group}」の列が無い")
+                if mark == REJECTED and present:
+                    rows.append(f"{mod}.{fn}: ✖ だが本番に「{group}」の列がある ({why})")
+    return rows
 
 
 # ==========================================================================
-# 7. catify (値の種類（ユニーク値）が少ない数値列をカテゴリとして扱う)
-#    出典: fe_catboost.cast_to_str (+0.00170)
-#    LightGBM では category dtype、XGBoost では enable_categorical、
-#    CatBoost では cat_features として渡す。RealMLP は build_features 内の
-#    `{col}_cat_` (floor 値の factorize) が実質これに相当し**適用済み**。
-# ==========================================================================
-# 値の種類が少ない数値列をカテゴリとして扱える形にする
-def catify(tr: pd.DataFrame, te: pd.DataFrame, cols=None, mode: str = "category"):
-    """値の種類（ユニーク値）が少ない数値列をカテゴリ扱いに変換した (tr, te) を返す."""
-    cols = LOWCARD_NUM_COLS if cols is None else cols
-    tr, te = tr.copy(), te.copy()
-    for c in cols:
-        if mode == "str":
-            tr[c] = tr[c].astype(str)
-            te[c] = te[c].astype(str)
-        else:
-            # XGBoost は float dtype のカテゴリを受け付けないので、必ず整数コードに
-            # 変換してから category dtype にする (LightGBM もこれで問題ない)。
-            cats = pd.Index(sorted(set(tr[c].unique()) | set(te[c].unique())))
-            codes_tr = pd.Categorical(tr[c], categories=cats).codes.astype("int16")
-            codes_te = pd.Categorical(te[c], categories=cats).codes.astype("int16")
-            allc = pd.Index(range(len(cats)))
-            tr[c] = pd.Categorical(codes_tr, categories=allc)
-            te[c] = pd.Categorical(codes_te, categories=allc)
-    return tr, te
-
-
-# ==========================================================================
-# 8. 打ち止め済み (再検証不要) — 参照用に残すが既定では使わない
+# 3-1. 不採用(記録)— 横断で試したもの(再検証不要)
 #    - 四則演算 diff/ratio/sum/avg : 3モデルすべてで無効〜悪化 (CatBoost -0.00099)
 #    - 交互作用 TE (2/3/6/10/13列) : 全滅
 #    - 行フィンガープリント        : train 全行ユニークで原理的に機能しない
@@ -388,7 +312,7 @@ def cat_pairs(cols=None):
 
 
 # ==========================================================================
-# 6. 年収の近傍統計(近くの値の購入率・傾き・曲率)
+# 3-2. 不採用(記録)— 年収の近傍統計(近くの値の購入率・傾き・曲率)
 #    出典: jazivxt/single-model-zoom-zoom の局所ビン統計、blamerx の window encodings
 #    厳密値TEは「年収がちょうどこの値」の購入率(1値あたり約50行)。
 #    ここでは「この値を中心に ±r ドル」の購入率と、左右の購入率の差(カーブの向き)を渡す。
@@ -468,9 +392,9 @@ def add_income_neighborhood(fit_income, fit_y, other_incomes, radii=NEIGHBOR_RAD
     return fit_frame, others
 
 # ============================================================================
-# 不採用(記録)— 各モデルの 03_feature_engineering_<model>.py から移した関数
+# 3-3. 不採用(記録)— 各モデルの 03_feature_engineering_<model>.py から移した関数
 #   本番では使わない。再検証しないための記録として残す。名前の末尾はもとのモデル。
-#   根拠は src/feature_catalog.py の FUNC_STATUS と、notebooks/03_feature_engineering.ipynb の 03-9 章。
+#   根拠はこのファイルの FUNC_STATUS と、notebooks/03_feature_engineering.ipynb の 03-9 章。
 #   移す前のコードは git のタグ best-20260927-d にある。
 # ============================================================================
 

@@ -84,9 +84,9 @@ uv run src/04_train_and_evaluate_realmlp.py --combo-home --te-income --dump-feat
 `data/` はリポジトリに含めていないため**クローン先では再生成できない**。
 更新を忘れると、ノートブックが古い列構成を表示し続ける。現行は **39 列**(`--combo-home` で組み合わせキーを1組、`--te-income` で年収の Target Encoding を足した後)。
 
-併せて `src/feature_catalog.py` の **`FUNC_STATUS` も更新する**こと。
+併せて `src/03_feature_engineering_AllCatalog.py` の **`FUNC_STATUS` も更新する**こと。
 `03_feature_engineering_realmlp.py` には**本番で使う関数だけ**を置く。検証して捨てた関数は、再検証しないための記録として
-`03_feature_engineering_all.py` の「不採用(記録)」に、名前の末尾に `_realmlp` を付けて移す(2026-09-28 から)。
+`03_feature_engineering_AllCatalog.py` の「不採用(記録)」に、名前の末尾に `_realmlp` を付けて移す(2026-09-28 から)。
 新しい施策は `04` に一時的な引数を足して試し、採用なら本番の構成(`te_plan()` など)に組み込み、不採用なら関数を移して引数を消す。
 どれが本番で生きているかは、この表が持つ。`notebooks/03_feature_engineering.ipynb` の 03-7 章(採否表と本番の列の突き合わせ)はここを読む。不採用にしたら同ノートブック 9 章の表にも1行足すこと。
 - 採用したら `("03_feature_engineering_realmlp", "関数名"): (ADOPTED, "根拠")`

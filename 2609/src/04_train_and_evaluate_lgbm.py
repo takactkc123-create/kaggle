@@ -119,8 +119,8 @@ def main():
         X_tr, X_va, X_te = fold_matrices(prep, y, tr_idx, va_idx, n_inner=args.inner)
 
         if args.dump_features:
-            import feature_catalog
-            feature_catalog.dump(args.tag, "LightGBM", X_tr.columns,
+            catalog = importlib.import_module("03_feature_engineering_AllCatalog")
+            catalog.dump(args.tag, "LightGBM", X_tr.columns,
                                  cat_features=[c for c in X_tr.columns if str(X_tr[c].dtype) == "category"],
                                  note="本番の構成(fe.te_plan())")
             return

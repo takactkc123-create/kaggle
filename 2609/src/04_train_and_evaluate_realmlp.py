@@ -669,8 +669,8 @@ def main():
 
         if args.dump_features:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-            import feature_catalog
-            feature_catalog.dump(
+            catalog = importlib.import_module("03_feature_engineering_AllCatalog")
+            catalog.dump(
                 args.tag, "RealMLP", X_tr.columns, cat_features=cat_cols,
                 note=f"no_orig={args.no_orig} combo_home={args.combo_home}",
             )

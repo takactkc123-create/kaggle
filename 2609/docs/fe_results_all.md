@@ -4,7 +4,7 @@ S6E9 の4モデル(LightGBM / XGBoost / CatBoost / RealMLP)に散らばってい
 `03_feature_engineering_all.py` に集約し、**「あるモデルで有効だが別のモデルに未適用」** の取りこぼしを
 洗い出して検証した記録。
 
-- 集約カタログ: [03_feature_engineering_all.py](../src/03_feature_engineering_all.py)
+- 集約カタログ: `03_feature_engineering_all.py`(2026-10-03 に `feature_catalog.py` と統合して [03_feature_engineering_AllCatalog.py](../src/03_feature_engineering_AllCatalog.py) に改名。本番で使われていない集約版の関数は削除し、不採用の関数の記録だけを残した。削除前のコードは git のタグ `best-20260928` にある)
 - 検証ハーネス: `tools/crosstest_gbdt.py`(GBDT 3種)/ `tools/crosstest_realmlp.py`
   (検証用スクリプトのためリポジトリには含めていない)
 - 既存の `03_feature_engineering_<model>.py` / `04_train_and_evaluate_<model>.py` は**一切変更していない**。

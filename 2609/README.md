@@ -8,7 +8,7 @@ EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二�
 - コンペ: https://www.kaggle.com/competitions/playground-series-s6e9
 - 開催: Kaggle 主催の Playground Series
 - 期間: 2026-09-01〜09-30 の 1 か月
-- 参加: 3,575チーム(1チーム 3 人まで)。このプロジェクトは 1 人で参加し、提出は締切までに 21 回(1日 10 回まで)
+- 参加: 3,575チーム
 - データ: 顧客の属性・通勤距離・充電環境・補助金の有無など 13 列。train 668,665 行 / test 286,571 行。
 
 ## 結果
@@ -63,12 +63,11 @@ kaggle/                                  # リポジトリのルート(コンペ
     │   ├── 01_eda.py
     │   ├── 02_baseline_<model>.py
     │   ├── 03_feature_engineering_<model>.py   # 本番で使う特徴量の関数
-    │   ├── 03_feature_engineering_all.py       # 横断カタログ + 不採用の関数の記録
+    │   ├── 03_feature_engineering_AllCatalog.py  # 採否表・列名の JSON 出力・不採用の関数の記録
     │   ├── 04_train_and_evaluate_<model>.py
     │   ├── 05_hyperparameter_tuning.py
     │   ├── 06_ensemble_hill_climbing.py
     │   ├── 07_compare_predictions.py
-    │   ├── feature_catalog.py                  # 採否表(FUNC_STATUS)と列名の JSON 出力
     │   └── feature_importance.py               # Feature Importance(特徴量の重要度)の確認
     ├── notebooks/                       # 工程を追える説明版(01〜06)
     ├── docs/
@@ -111,7 +110,7 @@ kaggle/                                  # リポジトリのルート(コンペ
 | ⑤ | Hyperparameter Tuning(ハイパーパラメータ調整) | `05_hyperparameter_tuning.py` | `05_hyperparameter_tuning.ipynb` | `docs/hyperparameter_tuning_results.csv` |
 | ⑥ | Ensemble(アンサンブル) | `06_ensemble_hill_climbing.py` | `06_ensemble.ipynb` | `submit/submission_hillclimb.csv` |
 | ⑦ | Paired DeLong Test(対応のある DeLong 検定) | `07_compare_predictions.py` | (`06_ensemble.ipynb` に含む) | 採否判定 |
-| — | 補助 | `feature_catalog.py` | — | 本番で使っている関数の一覧(`FUNC_STATUS`)と列名の JSON 出力 |
+| — | 補助 | `03_feature_engineering_AllCatalog.py` | `03_feature_engineering.ipynb` の 03-7 章 | 関数の採否表(`FUNC_STATUS`)、列名の JSON 出力、不採用の関数の記録。学習には関わらない |
 | — | 補助 | `feature_importance.py` | `04_train_and_evaluate.ipynb` の 04-7 章 | Feature Importance(特徴量の重要度)の上位の列。本番の成果物には書き込まない |
 | — | Claude Code | `.claude/agents/*.md` | — | `docs/fe_results_*.md` |
 
@@ -213,7 +212,7 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 | XGBoost | `src/03_feature_engineering_xgb.py` |
 | CatBoost | `src/03_feature_engineering_catboost.py` |
 | RealMLP | `src/03_feature_engineering_realmlp.py` |
-| (横断) | `src/03_feature_engineering_all.py`(全モデルの Feature Engineering を集約したカタログ。不採用の関数の記録もここ) |
+| (横断) | `src/03_feature_engineering_AllCatalog.py`(全モデルの関数の採否表と、不採用の関数の記録) |
 
 **効いたもの**
 - **厳密値 Target Encoding**(各モデル +0.003 前後、最大の改善要因)。数値列もビン分割せず値のままキーにする

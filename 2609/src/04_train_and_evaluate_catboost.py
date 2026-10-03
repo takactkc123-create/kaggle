@@ -137,8 +137,8 @@ def main() -> None:
                 if name in targets and name not in cats]
 
         if args.dump_features:
-            import feature_catalog
-            feature_catalog.dump(args.tag or "catboost", "CatBoost", feats, cat_features=cats,
+            catalog = importlib.import_module("03_feature_engineering_AllCatalog")
+            catalog.dump(args.tag or "catboost", "CatBoost", feats, cat_features=cats,
                                  note="本番の構成(fe.te_plan())")
             return
 

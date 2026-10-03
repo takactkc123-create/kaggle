@@ -77,7 +77,7 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 | 担当 | 定義ファイル | 管轄 |
 |---|---|---|
 | LightGBM / XGBoost / CatBoost / RealMLP Lead | `lgbm-lead` / `xgb-lead` / `catboost-lead` / `realmlp-lead` | `03_feature_engineering_<model>.py` / `04_train_and_evaluate_<model>.py` |
-| **FE Lead**(競争しない) | `fe-lead` | `03_feature_engineering_all.py`。モデル間の取りこぼしを横展開 |
+| **FE Lead**(競争しない) | `fe-lead` | `03_feature_engineering_AllCatalog.py`。モデル間の取りこぼしを横展開 |
 | **Research Lead**(競争しない) | `research-lead` | Kaggle の Code / Discussion から新しい手を持ち込む |
 
 ### 競争ルール
@@ -99,8 +99,8 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 - `04_*` に `--dump-features` を付けると、本番と同じコードパスで列名を `docs/features_<tag>.json` に書いて終了する。
   **Feature Engineering を変えたら必ず再生成すること**。
 - `03_<model>` には本番で使う関数だけを置き、作る列は各モデルの `te_plan()` などにまとめる。捨てた関数は
-  `03_feature_engineering_all.py` の「不採用(記録)」に、名前の末尾にモデル名を付けて移す。
-  採否は `src/feature_catalog.py` の **`FUNC_STATUS`**(〇33 / ✖33 / 補助8)が持ち、**採否を変えたらこの表も更新する**。`verify_status()` が JSON と突き合わせて矛盾を検出する。
+  `03_feature_engineering_AllCatalog.py` の「不採用(記録)」に、名前の末尾にモデル名を付けて移す。
+  採否は同じファイルの **`FUNC_STATUS`**(〇24 / ✖33 / 補助4)が持ち、**採否を変えたらこの表も更新する**。`verify_status()` が JSON と突き合わせて矛盾を検出する。
 
 ## 採否基準(2026-09-20 から paired DeLong 検定)
 
