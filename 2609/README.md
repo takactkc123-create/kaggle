@@ -5,8 +5,11 @@
 EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二値分類コンペ。
 評価指標は **ROC-AUC(0~1)**。 ※ 1 に近いほど精度がよく、順位が高い。
 
-- コンペ: https://www.kaggle.com/competitions/playground-series-s6e9(締切 2026-09-30)
-- データ: 顧客の属性・通勤距離・充電環境・補助金の有無など 13 列。train 668,665 行 / test 286,571 行
+- コンペ: https://www.kaggle.com/competitions/playground-series-s6e9
+- 開催: Kaggle 主催の Playground Series(毎月開かれる練習用のコンペ。賞品はグッズ)。期間は 2026-09-01〜09-30 の 1 か月
+- 参加: 3,575チーム(1チーム 3 人まで)。このプロジェクトは 1 人で参加し、提出は締切までに 21 回(1日 10 回まで)
+- データ: 顧客の属性・通勤距離・充電環境・補助金の有無など 13 列。train 668,665 行 / test 286,571 行。元になった公開データ(1 万行)から Kaggle が合成したもの
+- 競争の方針: 目標は上位15%以内。採否は Public LB の上下ではなく、CV(5-fold)と paired DeLong 検定で判断する(Public LB は test の 20% だけで採点され、揺れが大きいため)
 
 ## 結果
 
@@ -21,6 +24,21 @@ EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二�
 
 - **Private の順は CV の順と一致し、Public の順とは逆だった。** Public が最高の元の構成より、CV が最高の構成が Private で上回った
 - 最終提出の 2 本は**予測がなるべく違う組み合わせ**にしている(両張り。① と ② の test の予測の順位相関は 0.99956)
+
+### スコアアップに向けて取り組んだこと(ベースライン → アンサンブル)
+
+| # | 工程 | 取り組み | CV |
+|---|---|---|---|
+| 1 | ② Baseline | カテゴリ列を落とさずにモデルへ渡す(7 列 → 13 列。+0.057) | 0.94156(CatBoost) |
+| 2 | ③ Feature Engineering | 厳密値 Target Encoding(+0.003)、Out-of-Fold によるリーク対策、Count Encoding | — |
+| 3 | ④ Train and Evaluate | 収束の確認(学習率を下げ、early stopping で木の本数を決める。+0.0008) | 0.94555 |
+| 4 | ③ Feature Engineering | 平滑化3種の Target Encoding + Smooth Keys + digit + ビン数 1024、CatBoost の catify | 0.94604 |
+| 5 | ⑥ Ensemble | 異種モデル RealMLP の追加(+0.0005)、列サブサンプリング(+0.0002)、3 モデルの順位平均 | 0.946234 |
+| 6 | ⑤ Hyperparameter Tuning | 18 試行すべて誤差か悪化で、採用ゼロ | — |
+| 7 | ③ Feature Engineering | 重複する列の整理、交互作用 1 組、RealMLP に年収の Target Encoding | 0.946264 |
+| 8 | ④ Train and Evaluate | Feature Importance から、LightGBM に交互作用の制約(+0.000047) | **0.946310** |
+
+CV は、その時点で提出した構成の OOF AUC(1 は CatBoost 単体、3 以降はアンサンブル。下の「提出ごとの推移」と同じ値)。各施策の採否は ⑦ の paired DeLong 検定で判断した。
 
 ## プロセス全体像
 
