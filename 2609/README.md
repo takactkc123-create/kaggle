@@ -160,15 +160,15 @@ uv run src/01_eda.py
 
 | ファイル | 内容 |
 |---|---|
-| `01_target_distribution.png` | 目的変数の件数と比率 |
-| `02_categorical_hist.png` | カテゴリ6列の分布(Yes/No積み上げ) |
-| `03_numeric_hist.png` | 数値7列の分布 |
-| `04_numeric_log_hist.png` | 値の種類（ユニーク値）が多い2列の対数分布 |
-| `05_correlation_heatmap.png` | 数値列と目的変数の相関 |
-| `06_boxplots_by_target.png` | Yes/No別の箱ひげ図 |
-| `07_target_rate_by_category.png` | カテゴリ値ごとの購入率 |
-| `08_target_rate_by_numeric.png` | 数値の値ごとの購入率 |
-| `09_train_test_distribution.png` | train と test の分布比較 |
+| [`01_目的変数の分布.png`](datacheck/01_%E7%9B%AE%E7%9A%84%E5%A4%89%E6%95%B0%E3%81%AE%E5%88%86%E5%B8%83.png) | 目的変数の件数と比率 |
+| [`02_カテゴリ列の件数.png`](datacheck/02_%E3%82%AB%E3%83%86%E3%82%B4%E3%83%AA%E5%88%97%E3%81%AE%E4%BB%B6%E6%95%B0.png) | カテゴリ6列の分布(Yes/No積み上げ) |
+| [`03_数値列のヒストグラム.png`](datacheck/03_%E6%95%B0%E5%80%A4%E5%88%97%E3%81%AE%E3%83%92%E3%82%B9%E3%83%88%E3%82%B0%E3%83%A9%E3%83%A0.png) | 数値7列の分布 |
+| [`04_年収と通勤距離の対数ヒストグラム.png`](datacheck/04_%E5%B9%B4%E5%8F%8E%E3%81%A8%E9%80%9A%E5%8B%A4%E8%B7%9D%E9%9B%A2%E3%81%AE%E5%AF%BE%E6%95%B0%E3%83%92%E3%82%B9%E3%83%88%E3%82%B0%E3%83%A9%E3%83%A0.png) | 値の種類（ユニーク値）が多い2列の対数分布 |
+| [`05_相関ヒートマップ.png`](datacheck/05_%E7%9B%B8%E9%96%A2%E3%83%92%E3%83%BC%E3%83%88%E3%83%9E%E3%83%83%E3%83%97.png) | 数値列と目的変数の相関 |
+| [`06_購入有無別の箱ひげ図.png`](datacheck/06_%E8%B3%BC%E5%85%A5%E6%9C%89%E7%84%A1%E5%88%A5%E3%81%AE%E7%AE%B1%E3%81%B2%E3%81%92%E5%9B%B3.png) | Yes/No別の箱ひげ図 |
+| [`07_カテゴリ列の値ごとの購入率.png`](datacheck/07_%E3%82%AB%E3%83%86%E3%82%B4%E3%83%AA%E5%88%97%E3%81%AE%E5%80%A4%E3%81%94%E3%81%A8%E3%81%AE%E8%B3%BC%E5%85%A5%E7%8E%87.png) | カテゴリ値ごとの購入率 |
+| [`08_数値列の値ごとの購入率.png`](datacheck/08_%E6%95%B0%E5%80%A4%E5%88%97%E3%81%AE%E5%80%A4%E3%81%94%E3%81%A8%E3%81%AE%E8%B3%BC%E5%85%A5%E7%8E%87.png) | 数値の値ごとの購入率 |
+| [`09_trainとtestの分布比較.png`](datacheck/09_train%E3%81%A8test%E3%81%AE%E5%88%86%E5%B8%83%E6%AF%94%E8%BC%83.png) | train と test の分布比較 |
 
 **主な情報**: train 668,665行 / test 286,571行、欠損なし、購入率 17.5%。
 `Environmental_Concern_Level` の効きが圧倒的(レベル1で約1% → レベル5で約52%)。
