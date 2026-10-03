@@ -79,6 +79,7 @@ kaggle/                                  # リポジトリのルート(コンペ
     │   └── reference_URL.md 【ignore】   # 参考カーネルの調査結果
     ├── .claude/agents/                  # サブエージェントの定義
     │   └── lookup-transformer-lead.md 【ignore】
+    ├── .claude/skills/                  # 進め方と実験の手順(コンペに依存しない)
     ├── data/ 【ignore】                  # train.csv / test.csv / sample_submission.csv / 元データ
     ├── datacheck/ 【ignore】             # EDA の図
     ├── oof/ 【ignore】                   # oof_<model>.npy / pred_<model>.npy(アンサンブル用)
@@ -112,7 +113,7 @@ kaggle/                                  # リポジトリのルート(コンペ
 | ⑦ | Paired DeLong Test(対応のある DeLong 検定) | `07_compare_predictions.py` | (`06_ensemble.ipynb` に含む) | 採否判定 |
 | — | 補助 | `03_feature_engineering_AllCatalog.py` | `03_feature_engineering.ipynb` の 03-7 章 | 関数の採否表(`FUNC_STATUS`)、列名の JSON 出力、不採用の関数の記録。学習には関わらない |
 | — | 補助 | `feature_importance.py` | `04_train_and_evaluate.ipynb` の 04-7 章 | Feature Importance(特徴量の重要度)の上位の列。本番の成果物には書き込まない |
-| — | Claude Code | `.claude/agents/*.md` | — | `docs/fe_results_*.md` |
+| — | Claude Code | `.claude/agents/*.md` / `.claude/skills/*/SKILL.md` | — | `docs/fe_results_*.md` |
 
 | モデル | ② Baseline | ④ 最終構成 | 列数 |
 |---|---|---|---|
@@ -425,19 +426,21 @@ z=+8.48 で誤差でないことが確定した。
 合成データの生成過程にそうした関係がなかったため。
 ## Claude Code の構成
 
-Claude Code のサブエージェント(役割ごとに指示を分けた AI の担当者)を置き、モデルごとに改善を競わせ、支援役が横展開と情報収集を担う。
-
-定義は `.claude/agents/`、AI による設計・検証の方針は [CLAUDE.md](CLAUDE.md) にまとめている。
+| 置き場所 | 内容 |
+|---|---|
+| [CLAUDE.md](CLAUDE.md) | このコンペ固有の事実・規約・採否基準、指揮官(ユーザー)の承認が必要な事項 |
+| `.claude/skills/tabular-workflow/` | 表形式データのコンペの進め方(工程 ①〜⑦ の完了条件、最終提出の選び方)。コンペに依存しない |
+| `.claude/skills/experiment-gate/` | 実験1本の手順(バックアップ → スクリーニング → フル CV → DeLong 検定 → 後始末 → 記録)。コンペに依存しない |
+| `.claude/agents/` | 担当リーダー(サブエージェント)の管轄と、モデル固有の注意 |
 
 | エージェント | 役割 | 記録 |
 |---|---|---|
-| `lgbm-lead` / `xgb-lead` / `catboost-lead` / `realmlp-lead` | 各モデルの CV AUC 向上を**競う** | `docs/fe_results_*.md` |
+| `lgbm-lead` / `xgb-lead` / `catboost-lead` / `realmlp-lead` | 各モデルの CV AUC 向上を**競う** | `docs/fe_results_<model>.md` |
 | `fe-lead` | Feature Engineering の統括。**競争せず**、モデル間の取りこぼしを横展開する | `docs/fe_results_all.md` |
 | `research-lead` | 情報収集。**競争せず**、Kaggle の Code / Discussion から新しい手を持ち込む | (ローカル管理) |
 
 - モデル担当の審査は単体 AUC だけでなく、**他モデルとの非相関性**(アンサンブルへの貢献度)も見る
-- 支援役(`fe-lead` / `research-lead`)の評価は「他モデルがどれだけ伸びたか」
-- 他モデルのファイルは編集しない。Kaggle への提出は指揮官(ユーザー)の承認後のみ
+- 他モデルのファイルは編集しない。Kaggle への提出と push は指揮官の承認後のみ
 
 ## 環境
 
