@@ -32,7 +32,7 @@ set(fd.load("lgbm")["columns"]) - set(fd.load("catboost")["columns"])           
 | 施策 | LightGBM | XGBoost | CatBoost | RealMLP |
 |---|---|---|---|---|
 | Count Encoding | 有効(+0.00083) | 有効(+0.00049) | 無効(内部の統計と重複) | — |
-| catify | 不採用(-0.00016) | 見込み薄で打ち切り | 有効(+0.00170) | — |
+| catify | 不採用(-0.00016) | — | 有効(+0.00170) | — |
 | Out-of-Fold Target Encoding | 適用済 | 適用済(+0.00108) | 適用済 | 不採用(GBDT と相関が上がる) |
 | Smooth Keys / digit | 適用済 | 適用済 | 適用済 | digit は不採用(-0.00002) |
 

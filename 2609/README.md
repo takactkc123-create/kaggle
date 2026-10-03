@@ -97,7 +97,7 @@ kaggle/                                  # リポジトリのルート(コンペ
 
 ---
 
-## 【ソースコード】
+## ソースコード
 
 **ファイル名の先頭の番号が工程の順番**。`src/` が本番、`notebooks/` は同じ番号の工程を上から追える説明版
 (03・04 は `src/` と結果が一致することをノートブックの中で確認している)。
@@ -138,7 +138,7 @@ kaggle/                                  # リポジトリのルート(コンペ
 | `notebooks/02_baseline.ipynb` | ② | 3モデルのベースライン(共通の CV ループ) |
 | `notebooks/03_feature_engineering.ipynb` | ③ | read_csv から特徴量の作成までを **GBDT 共通 → GBDT モデル別 → RealMLP** の順にノートブック内で実行し、意図と根拠を説明。本番の .py と値まで一致することも確認。不採用にした施策の一覧も載せる |
 | `notebooks/04_train_and_evaluate.ipynb` | ④ | 4モデルを本番と同じ特徴量・設定で上から順に学習し、本番の OOF と一致することを確認(約75分)。04-7 章で Feature Importance を横向き棒グラフで確認 |
-| `notebooks/05_hyperparameter_tuning.ipynb` | ⑤ | Hyperparameter Tuning の設計と所要時間の見積もり + 実行した 18 試行の結果(すべて誤差か悪化。計画 24 のうち 6 本は打ち切り) |
+| `notebooks/05_hyperparameter_tuning.ipynb` | ⑤ | Hyperparameter Tuning の設計と所要時間の見積もり + 実行した 18 試行の結果(すべて誤差か悪化) |
 | `notebooks/06_ensemble.ipynb` | ⑥⑦ | ブレンドの再現。相関の確認と DeLong 検定による採否判定まで |
 
 Jupyter で開く際は、カーネルに **`.venv` の Python** を選ぶこと。
@@ -297,7 +297,7 @@ uv run src/feature_importance.py lgbm --top 20    # モデルと表示する列�
 
 学習率や木の深さなど、学習前に決めておく設定値(ハイパーパラメータ)を変えて、より良い組み合わせを探す工程。
 
-**列サブサンプリングの見落としが最大の伸びしろだった**(2026-09-20、外部カーネル調査で発見)。
+**列サブサンプリングが効いた**(2026-09-20、外部カーネル調査で見つけた見落とし)。
 92列の Target Encoding 特徴量に対し全列を使うと、どの木も最強列(年収の Target Encoding)を根に選ぶため木が似通う。
 
 | モデル | 設定 | 効果 |
@@ -332,14 +332,13 @@ uv run src/05_hyperparameter_tuning.py --report                 # これまで�
 05 の結果が 04 に自動で反映される仕組みはなく、`notebooks/04_train_and_evaluate.ipynb` は確定した値を書き写したうえで、
 04-6 章で `FIXED` と同じかを照合している(ずれていれば止まる)。④の再現コマンドも `FIXED` と同じ値にそろえること。
 
-| モデル | 試行数 | 1本あたり | 合計 | 優先度 |
-|---|---|---|---|---|
-| LightGBM | 9 | 約 4.2 分 | **約 0.6 時間** | **高**(`num_leaves` がデフォルト31のまま未調整) |
-| XGBoost | 10 | 約 10.8 分 | 約 1.8 時間 | 中 |
-| CatBoost | 5 | 約 25 分 | 約 2.1 時間 | 低(現在アンサンブルの重みが 0) |
+**探索の結果: 18 試行と LightGBM の深さ 2 本のすべてが誤差か悪化で、採用ゼロ。**
 
-> **期待値は低い。** 外部調査では、列サブサンプリング導入後にさらに深さや列比率を振った試行は
-> すべて -0.000023〜+0.000017 の誤差だった。未調整の `num_leaves` だけが本命。
+| モデル | 試した軸 | 結果 |
+|---|---|---|
+| LightGBM | `num_leaves`(15 / 63 / 127)、深さ(4、6 + 葉 63) | すべて誤差。`max_depth=5`(葉は最大 32)が先に効いている |
+| XGBoost | `max_depth`、`colsample_bytree`、`min_child_weight`、`subsample` | 深さ 6・7 は有意に悪化、ほかは誤差 |
+| CatBoost | `depth`、`one_hot_max_size` | 深さは既定の 6 が最適、`one_hot_max_size` は無反応 |
 
 ## ⑥ Ensemble(アンサンブル)
 
@@ -430,7 +429,7 @@ z=+8.48 で誤差でないことが確定した。
 |---|---|
 | [CLAUDE.md](CLAUDE.md) | このコンペ固有の事実・規約・採否基準、指揮官(ユーザー)の承認が必要な事項 |
 | `.claude/skills/tabular-workflow/` | 表形式データのコンペの進め方(工程 ①〜⑦ の完了条件、最終提出の選び方)。コンペに依存しない |
-| `.claude/skills/experiment-gate/` | 実験1本の手順(バックアップ → スクリーニング → フル CV → DeLong 検定 → 後始末 → 記録)。コンペに依存しない |
+| `.claude/skills/experiment-gate/` | 実験1本の手順(バックアップ → スクリーニング → フル CV → DeLong 検定 → 後処理 → 記録)。コンペに依存しない |
 | `.claude/agents/` | 担当リーダー(サブエージェント)の管轄と、モデル固有の注意 |
 
 | エージェント | 役割 | 記録 |
