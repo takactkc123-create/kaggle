@@ -395,7 +395,7 @@ uv run src/07_compare_predictions.py --all realmlp          # 全候補と比較
 **算出式**: 正例の予測を $X_1,\dots,X_m$、負例の予測を $Y_1,\dots,Y_n$ とする。
 
 ```math
-\hat\theta=\frac{1}{mn}\sum_{i=1}^{m}\sum_{j=1}^{n}\psi(X_i,Y_j),\qquad \psi(x,y)=\begin{cases}1 & x>y \\ 1/2 & x=y \\ 0 & x<y\end{cases}
+\hat\theta=\frac{1}{mn}\sum_{i=1}^{m}\sum_{j=1}^{n}\psi(X_i,Y_j),\qquad \psi(x,y)=\begin{cases}1 & x \gt y \\ 1/2 & x = y \\ 0 & x \lt y\end{cases}
 ```
 
 各行が AUC にどれだけ寄与したか(構造成分)を、モデルごとに求める。
