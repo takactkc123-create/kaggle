@@ -1,7 +1,7 @@
 """EDA の図を datacheck/ に保存する。
 
 図の構成と順番は notebooks/01_eda.ipynb に合わせている(ファイル名先頭の連番が表示順)。
-各関数の描き方はノートブックの同じ節のセルと同じ。最後の train と test の比較だけは src にしかない。
+各関数の描き方はノートブックの同じ節のセルと同じ。
 
 使い方:
     uv run src/01_eda.py
@@ -166,6 +166,29 @@ def plot_categorical_count_and_rate(train, y, cat_cols):
     save("03_カテゴリ列の件数と購入率.png")
 
 
+# 01-1-8: train と test の分布を重ねて比べる
+def plot_train_test_distribution(tr, te, num_cols, cat_cols):
+    low_card = [c for c in num_cols if tr[c].nunique() <= 50]
+    cols = num_cols + cat_cols
+    n_cols = 4
+    n_rows = (len(cols) + n_cols - 1) // n_cols
+    plt.figure(figsize=(16, 4 * n_rows))
+    for i, col in enumerate(cols):
+        plt.subplot(n_rows, n_cols, i + 1)
+        if col in cat_cols or col in low_card:
+            dist = pd.DataFrame({"train": tr[col].value_counts(normalize=True),
+                                 "test": te[col].value_counts(normalize=True)}).sort_index()
+            dist.plot(kind="bar", ax=plt.gca(), width=0.8, legend=(i == 0))
+        else:
+            sns.kdeplot(tr[col], label="train", fill=True, alpha=0.3)
+            sns.kdeplot(te[col], label="test", fill=True, alpha=0.3)
+            if i == 0:
+                plt.legend()
+        plt.title(f"train vs test: {col}", fontsize=10)
+        plt.xticks(rotation=45, ha="right")
+    save("04_trainとtestの分布比較.png")
+
+
 # 2列の関連の強さを 0〜1 で返す(Cramér's V。カテゴリ列どうしでも使える)
 def cramers_v(a, b):
     table = pd.crosstab(a, b)
@@ -201,7 +224,7 @@ def plot_correlation_heatmaps(train, y, num_cols, cat_cols):
     sns.heatmap(cramer, annot=True, fmt=".2f", cmap="YlOrRd", vmin=0, vmax=1, square=True,
                 linewidths=.5, cbar_kws={"shrink": .7}, annot_kws={"size": 7}, ax=axes[1])
     axes[1].set_title("Cramér's V(全列)— 型を問わず関連の強さが分かる", fontsize=11)
-    save("04_相関ヒートマップ.png")
+    save("05_相関ヒートマップ.png")
 
 
 # 01-2-2: 関係の強い列の組(充電環境のクラスタ)を、X の値ごとの Y の割合で描く
@@ -229,7 +252,7 @@ def plot_charging_cluster(train):
         ax.set_ylabel(y_col)
         ax.set_title(f"{x_col}(X) × {y_col}(Y)", fontsize=10)
     axes.ravel()[-1].axis("off")
-    save("05_充電環境のクラスタ.png")
+    save("06_充電環境のクラスタ.png")
 
 
 # 01-2-2: 自宅充電の可否ごとに、自宅近くのスタンド数と購入の log-odds を描く
@@ -243,7 +266,7 @@ def plot_home_charging_interaction(train, y):
     ax.set_ylabel("log-odds(購入)")
     ax.set_title("充電スタンド件数(x) と log-odds(y) _ 自宅充電yes/no 別", fontsize=11)
     ax.legend()
-    save("06_自宅充電と自宅スタンド数の交互作用.png")
+    save("07_自宅充電と自宅スタンド数の交互作用.png")
 
 
 # 01-2-3: 各説明変数の値ごとに「補助金ありの割合」を描く
@@ -266,7 +289,7 @@ def plot_subsidy_share(train, num_cols, cat_cols):
     axes[1, 0].set_ylabel("補助金ありの割合")
     axes[0, 0].set_ylim(0, 1)
     plt.suptitle(f"① 各説明変数の値ごとに見た「補助金ありの割合」(赤線は全体平均 {subsidy.mean():.1%})", fontsize=11)
-    save("07_補助金ありの割合.png")
+    save("08_補助金ありの割合.png")
 
 
 # 01-2-3: 補助金あり/なしで分けた購入率(上段)と、補助金の効果の大きさ(下段)を描く
@@ -305,7 +328,7 @@ def plot_subsidy_effect(train, y):
     axes[0, 0].legend(fontsize=8)
     axes[1, 0].set_ylabel("補助金の効果\n(log-odds 差)")
     plt.suptitle("② 補助金あり/なしで分けた購入率(上)と、補助金の効果の大きさ(下)", fontsize=11)
-    save("08_補助金の効き方.png")
+    save("09_補助金の効き方.png")
 
 
 # 01-2-4: 収入の5分位ごとの log-odds を、年齢帯・環境意識レベル別に描く
@@ -323,30 +346,7 @@ def plot_income_combinations(train, y):
         ax.set_ylabel("log-odds(購入)")
         ax.set_title(f"収入 × {row_name}", fontsize=11)
         ax.legend(fontsize=8)
-    save("09_収入と年齢・環境意識の組み合わせ.png")
-
-
-# train と test の分布を重ねて比べる(ノートブックにはない図)
-def plot_train_test_distribution(tr, te, num_cols, cat_cols):
-    low_card = [c for c in num_cols if tr[c].nunique() <= 50]
-    cols = num_cols + cat_cols
-    n_cols = 4
-    n_rows = (len(cols) + n_cols - 1) // n_cols
-    plt.figure(figsize=(16, 4 * n_rows))
-    for i, col in enumerate(cols):
-        plt.subplot(n_rows, n_cols, i + 1)
-        if col in cat_cols or col in low_card:
-            dist = pd.DataFrame({"train": tr[col].value_counts(normalize=True),
-                                 "test": te[col].value_counts(normalize=True)}).sort_index()
-            dist.plot(kind="bar", ax=plt.gca(), width=0.8, legend=(i == 0))
-        else:
-            sns.kdeplot(tr[col], label="train", fill=True, alpha=0.3)
-            sns.kdeplot(te[col], label="test", fill=True, alpha=0.3)
-            if i == 0:
-                plt.legend()
-        plt.title(f"train vs test: {col}", fontsize=10)
-        plt.xticks(rotation=45, ha="right")
-    save("10_trainとtestの分布比較.png")
+    save("10_収入と年齢・環境意識の組み合わせ.png")
 
 
 # データを読み、概要を表示してから EDA の図をすべて保存する
@@ -366,13 +366,13 @@ def main():
     plot_column_table(train)
     plot_numeric_distribution_and_rate(train, y, num_cols)
     plot_categorical_count_and_rate(train, y, cat_cols)
+    plot_train_test_distribution(train, test, num_cols, cat_cols)
     plot_correlation_heatmaps(train, y, num_cols, cat_cols)
     plot_charging_cluster(train)
     plot_home_charging_interaction(train, y)
     plot_subsidy_share(train, num_cols, cat_cols)
     plot_subsidy_effect(train, y)
     plot_income_combinations(train, y)
-    plot_train_test_distribution(train, test, num_cols, cat_cols)
 
 
 if __name__ == "__main__":
