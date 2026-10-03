@@ -216,15 +216,20 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 | RealMLP | `src/03_feature_engineering_realmlp.py` |
 | (横断) | `src/03_feature_engineering_AllCatalog.py`(全モデルの関数の採否表と、不採用の関数の記録) |
 
-**効いたもの**
-- **厳密値 Target Encoding**(各モデル +0.003 前後、最大の改善要因)。数値列もビン分割せず値のままキーにする
-- **Out-of-Fold Target Encoding によるリーク対策**(+0.00108)。学習行には内側CVのOOF値を当てる
-- Count Encoding(LightGBM/XGBoost のみ。CatBoost では無効)
-- Triple Target Encoding(平滑化3種)+ Smooth Keys + digit features + ビン数1024(+0.0005〜0.001)
-- catify(値の種類（ユニーク値）が少ない数値のカテゴリ化)は **CatBoost 固有**(+0.0017)
-- 列の整理(±0。スコアは変わらないが列が減り、読みやすくなる): 他の列と同じ情報しか持たない列を作らない(GBDT 3種)、値の種類が少ない数値列のエンコーディングを Target Encoding だけに絞る(LightGBM・CatBoost)。どの列を作るかは各モデルの `te_plan()` にまとめてある
-- 交互作用 1 組「自宅充電の可否 × 自宅スタンド数」(LightGBM・RealMLP。+0.00001 で有意差はないが、CV 最高のため最終構成 D に採用)
-- RealMLP の年収の Target Encoding(train だけで作る。`--te-income`)。元データの購入率と並べて単体 +0.000128 / アンサンブル +0.000018
+**効いたもの**(改善幅は OOF AUC の差)
+
+| 施策 | 内容 | 改善幅 | 対象モデル |
+|---|---|---|---|
+| 厳密値 Target Encoding | 年収などを丸めず、値そのものをキーにして購入率を渡す | **+0.00345**(LightGBM)/ +0.00108(CatBoost) | GBDT 3種 |
+| catify | 値の種類が少ない数値列(年齢・スタンド数など)をカテゴリとして渡す | **+0.00170** | CatBoost のみ |
+| Out-of-Fold Target Encoding | 学習行の Target Encoding を、自分を含まない行から計算する(リーク対策) | +0.00108(XGBoost) | GBDT 3種 |
+| Triple TE + Smooth Keys + digit + ビン数 1024 | 平滑化3種の Target Encoding、年収を粗く丸めたキー、桁ごとの列、ビン数の引き上げ | +0.00052 / +0.00048 / **+0.00096** | LightGBM / XGBoost / CatBoost |
+| Count Encoding | 値の出現回数を1列で渡す | +0.00083 / +0.00049 | LightGBM / XGBoost |
+| 年収の Target Encoding を train だけで作る(`--te-income`) | 元データの購入率と並べて、train での年収ごとの購入率を渡す | 単体 **+0.000128**(z=+6.84)/ アンサンブル +0.000018(z=+3.06) | RealMLP |
+| 元データでの年収ごとの購入率(1列) | 外部データ(元データ)から作った年収ごとの購入率 | アンサンブル +0.000022(z=+3.86)。採用基準未満だが CV 最高のため採用 | RealMLP |
+| 交互作用1組「自宅充電の可否 × 自宅スタンド数」 | EDA で見つけた唯一の交互作用を組み合わせた特徴量 | +0.000012 / +0.000028。採用基準未満だが CV 最高のため採用 | LightGBM / RealMLP |
+
+**採用したがスコアは変わらないもの**: 列の整理(他の列と同じ情報しか持たない列や、値の種類が少ない数値列の余分なエンコーディングを作らない)。どの列を作るかは各モデルの `te_plan()` にまとめてある。
 
 **効かなかったもの**: 四則演算、交互作用の Target Encoding(2〜13列。上の1組を除く)、行フィンガープリント、元データの行の追加、補助金との組み合わせ、元データの年収ごとの購入率を GBDT に足す、Target Encoding を内側の乱数を変えて数回作り平均する。
 各施策の詳細(なぜ試したか / 期待した効果 / 結果の考察)は `docs/fe_results_*.md` を参照。
