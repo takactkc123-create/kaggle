@@ -23,7 +23,7 @@ import pandas as pd
 from scipy import stats
 from sklearn.metrics import roc_auc_score
 
-SEARCH_DIRS = ["oof", "experiments_rejected", "experiments_rejected/digit_ab", "backup_20260918/oof"]
+SEARCH_DIRS = ["oof", "experiments_rejected", "experiments_rejected/digit_ab"]
 
 
 # 同順位を平均順位として扱う順位(midrank)を求める
