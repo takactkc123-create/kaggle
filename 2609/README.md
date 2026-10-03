@@ -231,7 +231,7 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 
 **採用したがスコアは変わらないもの**: 列の整理(他の列と同じ情報しか持たない列や、値の種類が少ない数値列の余分なエンコーディングを作らない)。どの列を作るかは各モデルの `te_plan()` にまとめてある。
 
-**効かなかったもの**: 四則演算、交互作用の Target Encoding(2〜13列。上の1組を除く)、行フィンガープリント、元データの行の追加、補助金との組み合わせ、元データの年収ごとの購入率を GBDT に足す、Target Encoding を内側の乱数を変えて数回作り平均する。
+**効かなかったもの**: 四則演算、交互作用の Target Encoding(2〜13列。上の1組を除く)、全列の値の組み合わせをキーにした Target Encoding、元データの行の追加、補助金との組み合わせ、元データの年収ごとの購入率を GBDT に足す、Target Encoding を内側の乱数を変えて数回作り平均する。
 各施策の詳細(なぜ試したか / 期待した効果 / 結果の考察)は `docs/fe_results_*.md` を参照。
 
 > `src/03_feature_engineering_<model>.py` は**関数の定義のみ**、`src/04_train_and_evaluate_<model>.py` が**実行**という分担。

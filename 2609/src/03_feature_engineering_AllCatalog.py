@@ -192,7 +192,7 @@ FUNC_STATUS = {
     ("03_feature_engineering_AllCatalog", "add_subsidy_products_lgbm"): (REJECTED, "補助金との積。+0.000009 (z=+0.65) で誤差"),
     ("03_feature_engineering_AllCatalog", "pair_keys_lgbm"):               (REJECTED, "2列交互作用TE(全ペア)。全滅。自宅充電×自宅スタンド数の1組だけは te2home で最終構成に採用"),
     ("03_feature_engineering_AllCatalog", "triple_keys_lgbm"):             (REJECTED, "3列交互作用TE。全滅"),
-    ("03_feature_engineering_AllCatalog", "all_columns_key_lgbm"):         (REJECTED, "行フィンガープリント。全行ユニークで原理的に不可"),
+    ("03_feature_engineering_AllCatalog", "all_columns_key_lgbm"):         (REJECTED, "全列の値の組み合わせのキー。train の全行で組み合わせが異なり、原理的に機能しない"),
     ("03_feature_engineering_AllCatalog", "fingerprint_key_lgbm"):         (REJECTED, "同上(部分集合版)"),
     ("03_feature_engineering_AllCatalog", "make_base_xgb"):                (REJECTED, "native category の素のフレーム。ordinal を採用したので使っていない"),
     ("03_feature_engineering_AllCatalog", "as_native_category_xgb"):       (REJECTED, "ordinal と差なし。非相関性を狙い ordinal を採用"),
@@ -273,7 +273,7 @@ def verify_status(tags=("lgbm", "xgb", "catboost", "realmlp")):
 # 3-1. 不採用(記録)— 横断で試したもの(再検証不要)
 #    - 四則演算 diff/ratio/sum/avg : 3モデルすべてで無効〜悪化 (CatBoost -0.00099)
 #    - 交互作用 TE (2/3/6/10/13列) : 全滅
-#    - 行フィンガープリント        : train 全行ユニークで原理的に機能しない
+#    - 全列の値の組み合わせのキー  : train の全行で組み合わせが異なり、原理的に機能しない
 #    - 元データ concat / buy_score : 実測 -0.00002
 # ==========================================================================
 # 【不採用】意味で選んだ数値列の四則演算の列を作る
@@ -532,9 +532,9 @@ def triple_keys_lgbm(kind: str = "cat"):
     raise ValueError(kind)
 
 
-# 【不採用】全列を連結したキー(行フィンガープリント)を作る
+# 【不採用】全列の値を連結した組み合わせのキーを作る
 def all_columns_key_lgbm():
-    """One key made of every raw column (row fingerprint).
+    """One key made of every raw column (the combination of all values in a row).
 
     WARNING (measured 2026-09-12): the full 13-column key is **unique for every
     single train row** (668,665 distinct keys / 668,665 rows, 100% singletons),
