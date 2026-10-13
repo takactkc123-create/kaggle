@@ -64,7 +64,7 @@ kaggle/                                  # リポジトリのルート(コンペ
     │   ├── 02_baseline_<model>.py
     │   ├── 03_feature_engineering_<model>.py   # 本番で使う特徴量の関数
     │   ├── 03_feature_engineering_AllCatalog.py  # 採否表・列名の JSON 出力・不採用の関数の記録
-    │   ├── 04_train_and_evaluate_<model>.py
+    │   ├── 04_model_train_and_evaluate_<model>.py
     │   ├── 05_hyperparameter_tuning.py
     │   ├── 06_ensemble_hill_climbing.py
     │   ├── 07_compare_predictions.py
@@ -107,12 +107,12 @@ kaggle/                                  # リポジトリのルート(コンペ
 | ① | EDA(探索的データ分析) | `01_eda.py` | `01_eda.ipynb` | `datacheck/*.png` |
 | ② | Baseline(ベースライン) | `02_baseline_<model>.py` | `02_baseline.ipynb` | `submit/submission_baseline_<model>.csv` |
 | ③ | Feature Engineering(特徴量エンジニアリング) | `03_feature_engineering_<model>.py` | `03_feature_engineering.ipynb` | (関数のみ。実行しない) |
-| ④ | Train and Evaluate(学習と評価) | `04_train_and_evaluate_<model>.py` | `04_train_and_evaluate.ipynb` | `oof/` `submit/` `importance/` |
+| ④ | Train and Evaluate(学習と評価) | `04_model_train_and_evaluate_<model>.py` | `04_model_train_and_evaluate.ipynb` | `oof/` `submit/` `importance/` |
 | ⑤ | Hyperparameter Tuning(ハイパーパラメータ調整) | `05_hyperparameter_tuning.py` | `05_hyperparameter_tuning.ipynb` | `docs/hyperparameter_tuning_results.csv` |
 | ⑥ | Ensemble(アンサンブル) | `06_ensemble_hill_climbing.py` | `06_ensemble.ipynb` | `submit/submission_hillclimb.csv` |
 | ⑦ | Paired DeLong Test(対応のある DeLong 検定) | `07_compare_predictions.py` | (`06_ensemble.ipynb` に含む) | 採否判定 |
 | — | 補助 | `03_feature_engineering_AllCatalog.py` | `03_feature_engineering.ipynb` の 03-7 章 | 関数の採否表(`FUNC_STATUS`)、列名の JSON 出力、不採用の関数の記録。学習には関わらない |
-| — | 補助 | `feature_importance.py` | `04_train_and_evaluate.ipynb` の 04-7 章 | Feature Importance(特徴量の重要度)の上位の列。本番の成果物には書き込まない |
+| — | 補助 | `feature_importance.py` | `04_model_train_and_evaluate.ipynb` の 04-7 章 | Feature Importance(特徴量の重要度)の上位の列。本番の成果物には書き込まない |
 | — | Claude Code | `.claude/agents/*.md` / `.claude/skills/*/SKILL.md` | — | `docs/fe_results_*.md` |
 
 | モデル | ② Baseline | ④ 最終構成 | 列数 |
@@ -137,7 +137,7 @@ kaggle/                                  # リポジトリのルート(コンペ
 | `notebooks/01_eda.ipynb` | ① | データの素性、値の種類（ユニーク値）の数、値ごとの購入率 |
 | `notebooks/02_baseline.ipynb` | ② | 3モデルのベースライン(共通の CV ループ) |
 | `notebooks/03_feature_engineering.ipynb` | ③ | read_csv から特徴量の作成までを **GBDT 共通 → GBDT モデル別 → RealMLP** の順にノートブック内で実行し、意図と根拠を説明。本番の .py と値まで一致することも確認。不採用にした施策の一覧も載せる |
-| `notebooks/04_train_and_evaluate.ipynb` | ④ | 4モデルを本番と同じ特徴量・設定で上から順に学習し、本番の OOF と一致することを確認(約75分)。04-7 章で Feature Importance を横向き棒グラフで確認 |
+| `notebooks/04_model_train_and_evaluate.ipynb` | ④ | 4モデルを本番と同じ特徴量・設定で上から順に学習し、本番の OOF と一致することを確認(約75分)。04-7 章で Feature Importance を横向き棒グラフで確認 |
 | `notebooks/05_hyperparameter_tuning.ipynb` | ⑤ | Hyperparameter Tuning の設計と所要時間の見積もり + 実行した 18 試行の結果(すべて誤差か悪化) |
 | `notebooks/06_ensemble.ipynb` | ⑥⑦ | ブレンドの再現。相関の確認と DeLong 検定による採否判定まで |
 
@@ -145,7 +145,7 @@ Jupyter で開く際は、カーネルに **`.venv` の Python** を選ぶこと
 
 **ノートブックは `src/` を読み込んで動く。クローン・持ち出しの際は `src/` も必ず含めること。**
 04・06 などは特徴量を作る関数やモデル本体を `src/` から import しており、`notebooks/` だけでは動かない。
-関数をノートブックへ移さない理由は `notebooks/04_train_and_evaluate.ipynb` の冒頭に記載している
+関数をノートブックへ移さない理由は `notebooks/04_model_train_and_evaluate.ipynb` の冒頭に記載している
 (要点: 本番の正本を1か所に保つため。Target Encoding は fold ごとに作り直すので、列名だけ渡しても `src/` の関数は必要になる)。
 
 ## ① EDA(Exploratory Data Analysis:探索的データ分析)
@@ -234,7 +234,7 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 **効かなかったもの**: 四則演算、交互作用の Target Encoding(2〜13列。上の1組を除く)、全列の値の組み合わせをキーにした Target Encoding、元データの行の追加、補助金との組み合わせ、元データの年収ごとの購入率を GBDT に足す、Target Encoding を内側の乱数を変えて数回作り平均する。
 各施策の詳細(なぜ試したか / 期待した効果 / 結果の考察)は `docs/fe_results_*.md` を参照。
 
-> `src/03_feature_engineering_<model>.py` は**関数の定義のみ**、`src/04_train_and_evaluate_<model>.py` が**実行**という分担。
+> `src/03_feature_engineering_<model>.py` は**関数の定義のみ**、`src/04_model_train_and_evaluate_<model>.py` が**実行**という分担。
 > この分離により、同じ関数を別の検証スクリプトからも再利用できる。
 
 ## ④ Train and Evaluate(学習と評価)
@@ -243,26 +243,26 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 
 | モデル | ④ 学習・評価の実行スクリプト |
 |---|---|
-| LightGBM | `src/04_train_and_evaluate_lgbm.py` |
-| XGBoost | `src/04_train_and_evaluate_xgb.py` |
-| CatBoost | `src/04_train_and_evaluate_catboost.py` |
-| RealMLP | `src/04_train_and_evaluate_realmlp.py` |
+| LightGBM | `src/04_model_train_and_evaluate_lgbm.py` |
+| XGBoost | `src/04_model_train_and_evaluate_xgb.py` |
+| CatBoost | `src/04_model_train_and_evaluate_catboost.py` |
+| RealMLP | `src/04_model_train_and_evaluate_realmlp.py` |
 
 ### 現行ベストの再現コマンド
 
 ```bash
-uv run src/04_train_and_evaluate_lgbm.py \
+uv run src/04_model_train_and_evaluate_lgbm.py \
   --max_bin 1024 --feature_fraction 0.3 --max_depth 5 \
   --folds 5 --learning_rate 0.03 --n_estimators 8000 --early_stopping 200 --n_jobs 7 --interaction income --save --tag lgbm
 
-uv run src/04_train_and_evaluate_xgb.py --max-bin 1024 \
+uv run src/04_model_train_and_evaluate_xgb.py --max-bin 1024 \
   --set-param colsample_bytree=0.3 --set-param max_depth=5 \
   --folds 5 --learning-rate 0.03 --n-estimators 8000 --early-stopping 200 --n-jobs 7 --save --out-suffix ""
 
-uv run src/04_train_and_evaluate_catboost.py \
+uv run src/04_model_train_and_evaluate_catboost.py \
   --folds 5 --iters 1000 --lr 0.06 --fast --border 64 --hc-border 1024 --threads 7 --save
 
-uv run src/04_train_and_evaluate_realmlp.py --folds 5 --threads 7 --combo-home --te-income --tag realmlp   # epochs は 2 から変えないこと
+uv run src/04_model_train_and_evaluate_realmlp.py --folds 5 --threads 7 --combo-home --te-income --tag realmlp   # epochs は 2 から変えないこと
 ```
 
 | モデル | OOF AUC | 備考 |
@@ -280,10 +280,10 @@ uv run src/04_train_and_evaluate_realmlp.py --folds 5 --threads 7 --combo-home -
 `--dump-features` を付けると、**fold 1 の学習行列を組み上げた直後に列名を `docs/features_<tag>.json` へ書いて終了する**(学習しない)。本番と同じコードパスを通るので列の取りこぼしがない。`notebooks/03_feature_engineering.ipynb` は、ノートブックで組み上げた列がこの JSON と一致するかを確かめる。
 
 ```bash
-uv run src/04_train_and_evaluate_lgbm.py --dump-features --tag lgbm
-uv run src/04_train_and_evaluate_xgb.py --dump-features --out-suffix ""
-uv run src/04_train_and_evaluate_catboost.py --fast --dump-features --tag catboost
-uv run src/04_train_and_evaluate_realmlp.py --combo-home --te-income --dump-features --tag realmlp
+uv run src/04_model_train_and_evaluate_lgbm.py --dump-features --tag lgbm
+uv run src/04_model_train_and_evaluate_xgb.py --dump-features --out-suffix ""
+uv run src/04_model_train_and_evaluate_catboost.py --fast --dump-features --tag catboost
+uv run src/04_model_train_and_evaluate_realmlp.py --combo-home --te-income --dump-features --tag realmlp
 ```
 
 **Feature Engineering を変えたら再生成すること。** JSON は生成物だが `data/` を含めていないためクローン先では作り直せない。ノートブックの表示元になるのでリポジトリに含めている。
@@ -297,7 +297,7 @@ uv run src/feature_importance.py                  # LightGBM・XGBoost・CatBoos
 uv run src/feature_importance.py lgbm --top 20    # モデルと表示する列数を指定
 ```
 
-図と、読み取れること(重要度は相関ではない)は `notebooks/04_train_and_evaluate.ipynb` の 7 章。RealMLP は木のモデルのような重要度を持たないので対象外。
+図と、読み取れること(重要度は相関ではない)は `notebooks/04_model_train_and_evaluate.ipynb` の 7 章。RealMLP は木のモデルのような重要度を持たないので対象外。
 
 ## ⑤ Hyperparameter Tuning(ハイパーパラメータ調整)
 
@@ -330,12 +330,12 @@ uv run src/05_hyperparameter_tuning.py lgbm --only num_leaves   # 特定の軸�
 uv run src/05_hyperparameter_tuning.py --report                 # これまでの結果を表示
 ```
 
-`src/05_hyperparameter_tuning.py` は**学習コードを持たない**。既存の `04_train_and_evaluate_<model>.py` を引数違いで
+`src/05_hyperparameter_tuning.py` は**学習コードを持たない**。既存の `04_model_train_and_evaluate_<model>.py` を引数違いで
 呼ぶだけにして、収束設定や Feature Engineering の構成が本番とズレないようにしている。解説は
 `notebooks/05_hyperparameter_tuning.ipynb`。
 
 **本番のパラメータの正本は `src/05_hyperparameter_tuning.py` の `FIXED`**(本番コマンドのうち探索しない固定部分)。
-05 の結果が 04 に自動で反映される仕組みはなく、`notebooks/04_train_and_evaluate.ipynb` は確定した値を書き写したうえで、
+05 の結果が 04 に自動で反映される仕組みはなく、`notebooks/04_model_train_and_evaluate.ipynb` は確定した値を書き写したうえで、
 04-6 章で `FIXED` と同じかを照合している(ずれていれば止まる)。④の再現コマンドも `FIXED` と同じ値にそろえること。
 
 **探索の結果: 18 試行と LightGBM の深さ 2 本のすべてが誤差か悪化で、採用ゼロ。**

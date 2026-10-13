@@ -1,7 +1,7 @@
 """Feature engineering functions for the LightGBM line (S6E9).
 
 This module defines FE **functions only** - no execution code.
-`04_train_and_evaluate_lgbm.py` imports these and runs the CV.
+`04_model_train_and_evaluate_lgbm.py` imports these and runs the CV.
 
 Design notes
 ------------

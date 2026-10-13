@@ -15,7 +15,7 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 
 | 担当 | 定義ファイル | 管轄 |
 |---|---|---|
-| LightGBM / XGBoost / CatBoost / RealMLP Lead | `lgbm-lead` / `xgb-lead` / `catboost-lead` / `realmlp-lead` | `03_feature_engineering_<model>.py` / `04_train_and_evaluate_<model>.py`。CV AUC を競う |
+| LightGBM / XGBoost / CatBoost / RealMLP Lead | `lgbm-lead` / `xgb-lead` / `catboost-lead` / `realmlp-lead` | `03_feature_engineering_<model>.py` / `04_model_train_and_evaluate_<model>.py`。CV AUC を競う |
 | FE Lead(競争しない) | `fe-lead` | `03_feature_engineering_AllCatalog.py`。モデル間の取りこぼしを横展開 |
 | Research Lead(競争しない) | `research-lead` | Kaggle の Code / Discussion から新しい手を持ち込む |
 
@@ -57,7 +57,7 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 | RealMLP | — | **0.94603** | 39 | `--combo-home`(交互作用)、`--te-income`(年収の Target Encoding を train だけで作る) |
 
 - 実行コマンドは README「現行ベストの再現コマンド」、**パラメータの正本は `src/05_hyperparameter_tuning.py` の `FIXED`**
-- `notebooks/04_train_and_evaluate.ipynb` は 4 モデルを本番と同じ設定で学習し、OOF と `FIXED` との一致を確認する
+- `notebooks/04_model_train_and_evaluate.ipynb` は 4 モデルを本番と同じ設定で学習し、OOF と `FIXED` との一致を確認する
 - 改善の内訳: Feature Engineering +0.004 / 収束確認 +0.0008 / 列サブサンプリング +0.0002 / RealMLP 追加 +0.0005 / LightGBM の交互作用の制約 +0.00005。
   Private の順は CV の順と一致した(詳しい経緯は Log.md)
 

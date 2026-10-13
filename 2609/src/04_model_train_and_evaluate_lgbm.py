@@ -12,7 +12,7 @@ StratifiedKFold(n_splits=5, shuffle=True, random_state=42) で学習する。--s
 交互作用の制約(--interaction income。2026-09-29 採用): 年収系の列とそれ以外の列を、同じ木の枝で組み合わせない
 
 例
-    uv run src/04_train_and_evaluate_lgbm.py --max_bin 1024 --feature_fraction 0.3 --max_depth 5 \\
+    uv run src/04_model_train_and_evaluate_lgbm.py --max_bin 1024 --feature_fraction 0.3 --max_depth 5 \\
         --learning_rate 0.03 --n_estimators 8000 --early_stopping 200 --n_jobs 7 --interaction income --save
 """
 

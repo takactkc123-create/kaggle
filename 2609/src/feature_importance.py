@@ -51,7 +51,7 @@ def fixed_args(model):
 
 # fold 1 の学習行・検証行の行列を、本番(04)と同じ関数で作る
 def fold1_matrices(model, train, test, y, tr_idx, va_idx):
-    m04 = importlib.import_module(f"04_train_and_evaluate_{model}")
+    m04 = importlib.import_module(f"04_model_train_and_evaluate_{model}")
     if model == "lgbm":
         X_tr, X_va, _ = m04.fold_matrices(m04.prepare(train, test), y, tr_idx, va_idx)
         return X_tr, X_va, None
@@ -71,7 +71,7 @@ def importance_of(model, X_tr, y_tr, X_va, y_va, cats):
                              learning_rate=float(f["--learning_rate"]), num_leaves=31, max_bin=int(f["--max_bin"]),
                              n_jobs=int(f["--n_jobs"]), colsample_bytree=float(f["--feature_fraction"]),
                              max_depth=int(f["--max_depth"]), importance_type="gain",
-                             **({"interaction_constraints": importlib.import_module("04_train_and_evaluate_lgbm")
+                             **({"interaction_constraints": importlib.import_module("04_model_train_and_evaluate_lgbm")
                                  .interaction_groups(list(X_tr.columns), f["--interaction"])} if "--interaction" in f else {}))
         clf.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], eval_metric="auc",
                 callbacks=[early_stopping(int(f["--early_stopping"]), verbose=False), log_evaluation(0)])

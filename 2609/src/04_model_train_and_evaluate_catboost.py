@@ -9,7 +9,7 @@ StratifiedKFold(n_splits=5, shuffle=True, random_state=42) で学習する。--s
     + Target Encoding(fe.te_plan(): 数値7列・Smooth Keys 3本。fold 内で Out-of-Fold)
 
 例
-    uv run src/04_train_and_evaluate_catboost.py --iters 1000 --lr 0.06 --fast --border 64 --hc-border 1024 --threads 7 --save
+    uv run src/04_model_train_and_evaluate_catboost.py --iters 1000 --lr 0.06 --fast --border 64 --hc-border 1024 --threads 7 --save
 """
 
 from __future__ import annotations

@@ -9,9 +9,9 @@
   という分業になる。数値列のスケーリングは学習側 (NumericalPreprocessor) が担当する。
 
 重要な規約:
-- ここには「関数」しか置かない (CLAUDE.md のファイル構成規約)。実行は 04_train_and_evaluate_realmlp.py。
+- ここには「関数」しか置かない (CLAUDE.md のファイル構成規約)。実行は 04_model_train_and_evaluate_realmlp.py。
 - Target Encoding はリーク防止のため fold 内で fit する。ここでは行わない
-  (04_train_and_evaluate_realmlp.py 側で sklearn TargetEncoder を fold 内適用)。
+  (04_model_train_and_evaluate_realmlp.py 側で sklearn TargetEncoder を fold 内適用)。
 - ここで行う factorize / KBins / count encoding は「目的変数を使わない」変換なので
   train 全体で fit してよい (リークしない)。
 """

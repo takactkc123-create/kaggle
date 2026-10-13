@@ -1,7 +1,7 @@
 """⑤ Hyperparameter Tuning — ハイパーパラメータ探索のフレーム。
 
 設計方針:
-- **学習コードは書かない。** 既存の `04_train_and_evaluate_<model>.py` を引数違いで呼ぶだけにする。
+- **学習コードは書かない。** 既存の `04_model_train_and_evaluate_<model>.py` を引数違いで呼ぶだけにする。
   収束設定(lr 引き下げ + early stopping)や FE 構成を本番とズラさないため。
 - **1本ずつ順番に実行する。** 8コア環境で並列にすると CPU を取り合って完走しない。
 - **実行前に必ず所要時間を見積もる。** `--estimate` で試行数 × 実測の1本あたり時間を出す。
@@ -53,9 +53,9 @@ FIXED = {
 }
 
 SCRIPT = {
-    "lgbm": "src/04_train_and_evaluate_lgbm.py",
-    "xgb": "src/04_train_and_evaluate_xgb.py",
-    "catboost": "src/04_train_and_evaluate_catboost.py",
+    "lgbm": "src/04_model_train_and_evaluate_lgbm.py",
+    "xgb": "src/04_model_train_and_evaluate_xgb.py",
+    "catboost": "src/04_model_train_and_evaluate_catboost.py",
 }
 
 # ── 探索空間 ────────────────────────────────────────────────────────────────

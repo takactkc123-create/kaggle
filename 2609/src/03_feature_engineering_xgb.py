@@ -1,7 +1,7 @@
 """Feature engineering functions for XGBoost (S6E9).
 
 This module defines FE *functions only*. No execution code.
-`04_train_and_evaluate_xgb.py` imports these and runs CV.
+`04_model_train_and_evaluate_xgb.py` imports these and runs CV.
 
 Two kinds of functions:
   1. Fold-independent transforms (arithmetic, count/frequency encoding,

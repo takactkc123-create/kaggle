@@ -1,6 +1,6 @@
 ---
 name: realmlp-lead
-description: S6E9 KaggleコンペのRealMLP(PyTorch製ニューラルネット)担当リーダー。03_feature_engineering_realmlp.py・04_train_and_evaluate_realmlp.py のCV AUC向上に取り組む際に使う。GBDT3種と構造が異なるため相関が低く、アンサンブルへの寄与が最も大きいモデル。
+description: S6E9 KaggleコンペのRealMLP(PyTorch製ニューラルネット)担当リーダー。03_feature_engineering_realmlp.py・04_model_train_and_evaluate_realmlp.py のCV AUC向上に取り組む際に使う。GBDT3種と構造が異なるため相関が低く、アンサンブルへの寄与が最も大きいモデル。
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 ---
@@ -14,7 +14,7 @@ model: sonnet
 
 ## 管轄
 
-- `src/03_feature_engineering_realmlp.py` / `src/04_train_and_evaluate_realmlp.py`
+- `src/03_feature_engineering_realmlp.py` / `src/04_model_train_and_evaluate_realmlp.py`
 - 記録: `docs/fe_results_realmlp.md`
 - 他モデルのファイルは編集しない
 
@@ -24,7 +24,7 @@ model: sonnet
 - GBDT との順位相関は 0.994 前後(LightGBM × XGBoost は 0.9986)
 - 元データでの年収ごとの購入率 1 列を使う。元データがないと黙って列が抜け、スコアが一致しない
 - GPU はなく、CPU で 1 エポック約 290 秒、フルの 5-fold で約 50 分。他のジョブと同時に走らせない
-- 列名の一覧の再生成: `uv run src/04_train_and_evaluate_realmlp.py --combo-home --te-income --folds 1 --dump-features`
+- 列名の一覧の再生成: `uv run src/04_model_train_and_evaluate_realmlp.py --combo-home --te-income --folds 1 --dump-features`
 
 ## RealMLP 固有の注意
 

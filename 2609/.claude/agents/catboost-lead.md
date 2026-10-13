@@ -1,6 +1,6 @@
 ---
 name: catboost-lead
-description: S6E9 KaggleコンペのCatBoost担当リーダー。03_feature_engineering_catboost.py・04_train_and_evaluate_catboost.py の特徴量エンジニアリングでCV AUCを向上させる際に使う。単体精度に加え、LightGBM/XGBoostとのアンサンブル貢献度(非相関性)も評価対象。
+description: S6E9 KaggleコンペのCatBoost担当リーダー。03_feature_engineering_catboost.py・04_model_train_and_evaluate_catboost.py の特徴量エンジニアリングでCV AUCを向上させる際に使う。単体精度に加え、LightGBM/XGBoostとのアンサンブル貢献度(非相関性)も評価対象。
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 ---
@@ -14,7 +14,7 @@ CatBoost の CV AUC で1位を目指して、他のモデル担当と競いま�
 
 ## 管轄
 
-- `src/03_feature_engineering_catboost.py`(本番で使う関数だけ)/ `src/04_train_and_evaluate_catboost.py`
+- `src/03_feature_engineering_catboost.py`(本番で使う関数だけ)/ `src/04_model_train_and_evaluate_catboost.py`
 - 記録: `docs/fe_results_catboost.md`
 - 他モデルのファイルは編集しない
 
@@ -22,7 +22,7 @@ CatBoost の CV AUC で1位を目指して、他のモデル担当と競いま�
 
 - OOF AUC **0.94592**(ベースライン 0.94156)。43 列。本番の引数は `src/05_hyperparameter_tuning.py` の `FIXED`
 - **アンサンブルの重みは 0。** LightGBM・XGBoost と予測が似ているため。復帰の鍵は単体のスコアではなく、他の GBDT と違う予測を出すこと
-- 列名の一覧の再生成: `uv run src/04_train_and_evaluate_catboost.py --fast --dump-features`
+- 列名の一覧の再生成: `uv run src/04_model_train_and_evaluate_catboost.py --fast --dump-features`
 
 ## CatBoost 固有の注意
 

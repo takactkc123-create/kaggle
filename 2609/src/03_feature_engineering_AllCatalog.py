@@ -1,6 +1,6 @@
 """Feature Engineering のカタログ(全モデル横断)。本番の学習・予測・アンサンブルには関わらない。
 
-1. 列名の出力: 各 `04_train_and_evaluate_<model>.py` の `--dump-features` が `dump()` を呼び、fold 1 の列名を
+1. 列名の出力: 各 `04_model_train_and_evaluate_<model>.py` の `--dump-features` が `dump()` を呼び、fold 1 の列名を
    `docs/features_<tag>.json` に書く(学習はしない)。`classify()` は列名を特徴量の種類に分ける
 2. 採否表: 特徴量の関数ごとの採否(`FUNC_STATUS`。〇 採用 / ✖ 不採用 / — 補助)。
    `verify_status()` が採否表と `docs/features_<tag>.json` の矛盾を検出する(03 のノートブック 03-7 章)
@@ -230,7 +230,7 @@ _EXPECT = {
     "digit / 小数の分解": ["add_digit_features", "add_digits", "digit_block"],
     "Count / Frequency": ["count_encode", "add_count_encoding"],
     # RealMLP の target_encode_highcard はここに入れない。RealMLP の本番にも TE 列は
-    # 2本あるが、それは 04_train_and_evaluate_realmlp.py が sklearn の TargetEncoder で作るもので、
+    # 2本あるが、それは 04_model_train_and_evaluate_realmlp.py が sklearn の TargetEncoder で作るもので、
     # この関数(--exact-te 専用)とは別経路。種類の有無では判別できない。
     "Target Encoding":   ["target_encode_fold", "target_encode",
                           "fit_apply_te_cv_nested_multi"],

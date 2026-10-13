@@ -10,7 +10,7 @@ StratifiedKFold(n_splits=5, shuffle=True, random_state=42) で学習する。--s
     + Target Encoding(fe.te_plan(): Smooth Keys 4本・生の 13 列。fold 内で Out-of-Fold)
 
 例
-    uv run src/04_train_and_evaluate_xgb.py --max-bin 1024 --set-param colsample_bytree=0.3 --set-param max_depth=5 \\
+    uv run src/04_model_train_and_evaluate_xgb.py --max-bin 1024 --set-param colsample_bytree=0.3 --set-param max_depth=5 \\
         --learning-rate 0.03 --n-estimators 8000 --early-stopping 200 --n-jobs 7 --save
 """
 

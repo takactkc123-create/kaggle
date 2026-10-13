@@ -1,6 +1,6 @@
 ---
 name: lgbm-lead
-description: S6E9 KaggleコンペのLightGBM担当リーダー。03_feature_engineering_lgbm.py・04_train_and_evaluate_lgbm.py の特徴量エンジニアリングでCV AUCを向上させる際に使う。単体精度に加え、XGBoost/CatBoostとのアンサンブル貢献度(非相関性)も評価対象。
+description: S6E9 KaggleコンペのLightGBM担当リーダー。03_feature_engineering_lgbm.py・04_model_train_and_evaluate_lgbm.py の特徴量エンジニアリングでCV AUCを向上させる際に使う。単体精度に加え、XGBoost/CatBoostとのアンサンブル貢献度(非相関性)も評価対象。
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 ---
@@ -14,7 +14,7 @@ LightGBM の CV AUC で1位を目指して、他のモデル担当と競いま�
 
 ## 管轄
 
-- `src/03_feature_engineering_lgbm.py`(本番で使う関数だけ)/ `src/04_train_and_evaluate_lgbm.py`
+- `src/03_feature_engineering_lgbm.py`(本番で使う関数だけ)/ `src/04_model_train_and_evaluate_lgbm.py`
 - 記録: `docs/fe_results_lgbm.md`
 - 他モデルのファイルは編集しない
 
@@ -22,7 +22,7 @@ LightGBM の CV AUC で1位を目指して、他のモデル担当と競いま�
 
 - OOF AUC **0.94620**(ベースライン 0.94123)。46 列。本番の引数は `src/05_hyperparameter_tuning.py` の `FIXED`
 - 交互作用の制約(`--interaction income`): 年収系の列とそれ以外の列を、同じ木の枝で組み合わせない
-- 列名の一覧の再生成: `uv run src/04_train_and_evaluate_lgbm.py --interaction income --folds 1 --dump-features`
+- 列名の一覧の再生成: `uv run src/04_model_train_and_evaluate_lgbm.py --interaction income --folds 1 --dump-features`
 
 ## LightGBM 固有の注意
 

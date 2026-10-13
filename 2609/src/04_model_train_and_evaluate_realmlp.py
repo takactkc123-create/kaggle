@@ -13,8 +13,8 @@
   CV は StratifiedKFold(n_splits=5, shuffle=True, random_state=42) 固定 (他モデルと fold 共通)。
 
 使い方:
-  uv run python 04_train_and_evaluate_realmlp.py                     # 本番 (5-fold フル)
-  uv run python 04_train_and_evaluate_realmlp.py --folds 1 --subsample 0.1 --epochs 1 --tag bench
+  uv run python 04_model_train_and_evaluate_realmlp.py                     # 本番 (5-fold フル)
+  uv run python 04_model_train_and_evaluate_realmlp.py --folds 1 --subsample 0.1 --epochs 1 --tag bench
 """
 
 from __future__ import annotations

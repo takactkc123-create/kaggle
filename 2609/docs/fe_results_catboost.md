@@ -4,8 +4,8 @@
 
 実装:
 - `03_feature_engineering_catboost.py` — FE関数の定義のみ
-- `04_train_and_evaluate_catboost.py` — `--fe` に FEコンポーネントをカンマ区切りで渡して実行
-  (例: `uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify --folds 5 --save`)
+- `04_model_train_and_evaluate_catboost.py` — `--fe` に FEコンポーネントをカンマ区切りで渡して実行
+  (例: `uv run src/04_model_train_and_evaluate_catboost.py --fe te_all,catify --folds 5 --save`)
 
 ## 検証環境の制約(重要)
 
@@ -56,7 +56,7 @@ TE はすべて **fold内 fit** を厳守:
 ## 最終構成(フルデータ・5-fold)
 
 ```
-uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify --folds 5 --iters 400 --lr 0.15 --fast --save
+uv run src/04_model_train_and_evaluate_catboost.py --fe te_all,catify --folds 5 --iters 400 --lr 0.15 --fast --save
 ```
 
 | 項目 | 値 |
@@ -216,7 +216,7 @@ TE はキーあたりの行数が減っても平滑化が効くため、サブ�
 ## CPUが空いたときに回すべきコマンド(最優先TODO)
 
 ```
-uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify,digits,skeys,te3 \
+uv run src/04_model_train_and_evaluate_catboost.py --fe te_all,catify,digits,skeys,te3 \
   --folds 5 --iters 1000 --lr 0.06 --fast --border 64 --hc-border 1024 \
   --threads 6 --save
 ```
@@ -243,11 +243,11 @@ LightGBM/XGBoost が使う `"auto"`(sklearn TargetEncoder の経験ベイズ則)
   `m_i = p_i(1-p_i) / (p(1-p))`(sklearn `TargetEncoder(smooth="auto")` と同一の経験ベイズ則、
   fe_lgbm.py の実装と同型)を計算するようにした。数値 `smooth` の場合は従来と同じ
   `(sum + prior*m)/(count + m)` で挙動不変(純粋なリファクタ)
-- `04_train_and_evaluate_catboost.py`: `TRIPLE_SMOOTHS = ["auto", 10.0, 100.0]`
+- `04_model_train_and_evaluate_catboost.py`: `TRIPLE_SMOOTHS = ["auto", 10.0, 100.0]`
   (旧: `[10.0, 20.0, 100.0]`)
-- `04_train_and_evaluate_catboost.py`: `--hc-border` のターゲット判定タプルに `"auto"` を追加
+- `04_model_train_and_evaluate_catboost.py`: `--hc-border` のターゲット判定タプルに `"auto"` を追加
 
-コード自体は `uv run src/04_train_and_evaluate_catboost.py --fe te_all,catify,digits,skeys,te3 --folds 2 --iters 100
+コード自体は `uv run src/04_model_train_and_evaluate_catboost.py --fe te_all,catify,digits,skeys,te3 --folds 2 --iters 100
 --lr 0.2 --fast --border 32 --hc-border 64 --rows 50000` のスモークテストで例外なく動作することを確認済み
 (te_cols=18、正常終了)。
 
@@ -263,7 +263,7 @@ Windows環境の `uv` 呼び出し起因で `exit code 127` により未完走)
 
 **+0.00005 は採否基準 ±0.0004 を大きく下回る**。単一foldでの測定のためノイズ幅はさらに広く、
 判定材料として十分。指揮官の指示により作業を中止し、**コードは `backup_20260918/` の状態に
-完全 revert 済み**(`diff -q` で `03_feature_engineering_catboost.py` / `04_train_and_evaluate_catboost.py` ともにバックアップと
+完全 revert 済み**(`diff -q` で `03_feature_engineering_catboost.py` / `04_model_train_and_evaluate_catboost.py` ともにバックアップと
 バイト同一であることを確認)。成果物(`oof/`, `submit/`, `importance/`)も更新していない
 (mtime 変化なし、`oof_catboost.npy` は revert 前と `np.array_equal` で一致確認済み)。
 

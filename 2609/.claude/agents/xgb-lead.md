@@ -1,6 +1,6 @@
 ---
 name: xgb-lead
-description: S6E9 KaggleコンペのXGBoost担当リーダー。03_feature_engineering_xgb.py・04_train_and_evaluate_xgb.py の特徴量エンジニアリングでCV AUCを向上させる際に使う。単体精度に加え、LightGBM/CatBoostとのアンサンブル貢献度(非相関性)も評価対象。
+description: S6E9 KaggleコンペのXGBoost担当リーダー。03_feature_engineering_xgb.py・04_model_train_and_evaluate_xgb.py の特徴量エンジニアリングでCV AUCを向上させる際に使う。単体精度に加え、LightGBM/CatBoostとのアンサンブル貢献度(非相関性)も評価対象。
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 ---
@@ -14,7 +14,7 @@ XGBoost の CV AUC で1位を目指して、他のモデル担当と競います
 
 ## 管轄
 
-- `src/03_feature_engineering_xgb.py`(本番で使う関数だけ)/ `src/04_train_and_evaluate_xgb.py`
+- `src/03_feature_engineering_xgb.py`(本番で使う関数だけ)/ `src/04_model_train_and_evaluate_xgb.py`
 - 記録: `docs/fe_results_xgb.md`
 - 他モデルのファイルは編集しない
 
@@ -22,7 +22,7 @@ XGBoost の CV AUC で1位を目指して、他のモデル担当と競います
 
 - OOF AUC **0.94609**(ベースライン 0.94124)。69 列。本番の引数は `src/05_hyperparameter_tuning.py` の `FIXED`
 - カテゴリ列は整数コード(ordinal)で渡す。native category と差はないが、LightGBM と違う予測を出すため
-- 列名の一覧の再生成: `uv run src/04_train_and_evaluate_xgb.py --folds 1 --dump-features`
+- 列名の一覧の再生成: `uv run src/04_model_train_and_evaluate_xgb.py --folds 1 --dump-features`
 
 ## XGBoost 固有の注意
 
