@@ -3,7 +3,7 @@ name = "2609"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.14,<3.15"
 dependencies = [
     "catboost>=1.2.10",
     "kaggle>=2.2.4",

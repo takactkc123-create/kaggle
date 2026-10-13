@@ -464,7 +464,7 @@ z=+8.48 で誤差でないことが確定した。
 
 ## 環境
 
-- Python 3.14 / uv で管理(導入は下の「セットアップ」)
+- Python 3.14 系 / uv で管理(3.15 以降は対応外。導入は下の「セットアップ」)
 - 主要ライブラリ: lightgbm, xgboost, catboost, torch(CPU版), scikit-learn, pandas, matplotlib, seaborn
 - GPU は無し。RealMLP は CPU 学習で 1エポック約290秒(7スレッド)
 
