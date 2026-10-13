@@ -610,7 +610,7 @@ def main():
     train[TARGET] = (train[TARGET] == "Yes").astype(int)
     X = train.drop([ID, TARGET], axis=1)
     y = train[TARGET]
-    train_id, test_id = train[ID], test[ID]
+    test_id = test[ID]
     X_test = test.drop([ID], axis=1)
     del train, test
 
