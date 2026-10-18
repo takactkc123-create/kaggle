@@ -32,7 +32,7 @@ description: 表形式データのコンペ(Kaggle Playground など)を、EDA �
 | ① EDA | 件数・欠損・値の種類の数・値ごとの目的変数の率を見る。仮説を立てる | 次工程で試す施策がリストになっている |
 | ② Baseline | 元の列をそのまま、各ライブラリの既定の扱いで学習する | 全モデルの OOF の基準値がある |
 | ③ Feature Engineering | 元の情報を失わずに渡す施策から試す(下記) | 採用した施策が本番の構成に入り、列名の一覧を出力し直してある |
-| ④ Train and Evaluate | 収束(学習率を下げ、early stopping で木の本数を決める)を確認する | 本番の設定で OOF と test の予測を保存してある |
+| ④ Model Train and Evaluate | 収束(学習率を下げ、early stopping で木の本数を決める)を確認する | 本番の設定で OOF と test の予測を保存してある |
 | ⑤ Hyperparameter Tuning | 見落とし(既定値のままの引数、別の引数が先に効いている制約)を探す | 探索の結果を記録してある。誤差なら打ち止め |
 | ⑥ Ensemble | 順位平均で混ぜる。モデル間の順位相関も見る | 対応のある検定を通った構成だけが残っている |
 | ⑦ 判定 | `experiment-gate` の手順で採否を決める | 成功も失敗も記録してある |

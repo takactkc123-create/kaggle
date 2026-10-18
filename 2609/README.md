@@ -27,12 +27,12 @@ Private LB は test の 80%、Public LB は残り 20% で採点される。Priva
 |---|---|---|---|
 | 1 | ② Baseline | カテゴリ列を落とさずにモデルへ渡す(7 列 → 13 列。+0.057) | 0.94156(CatBoost) |
 | 2 | ③ Feature Engineering | 厳密値 Target Encoding(+0.003)、Out-of-Fold によるリーク対策、Count Encoding | — |
-| 3 | ④ Train and Evaluate | 収束の確認(学習率を下げ、early stopping で木の本数を決める。+0.0008) | 0.94555 |
+| 3 | ④ Model Train and Evaluate | 収束の確認(学習率を下げ、early stopping で木の本数を決める。+0.0008) | 0.94555 |
 | 4 | ③ Feature Engineering | 平滑化3種の Target Encoding + Smooth Keys + digit + ビン数 1024、CatBoost の catify | 0.94604 |
 | 5 | ⑥ Ensemble | 異種モデル RealMLP の追加(+0.0005)、列サブサンプリング(+0.0002)、3 モデルの順位平均 | 0.946234 |
 | 6 | ⑤ Hyperparameter Tuning | 18 試行すべて誤差か悪化で、採用ゼロ | — |
 | 7 | ③ Feature Engineering | 重複する列の整理、交互作用 1 組、RealMLP に年収の Target Encoding | 0.946264 |
-| 8 | ④ Train and Evaluate | Feature Importance から、LightGBM に交互作用の制約(+0.000047) | **0.946310** |
+| 8 | ④ Model Train and Evaluate | Feature Importance から、LightGBM に交互作用の制約(+0.000047) | **0.946310** |
 
 CV は、その時点で提出した構成の OOF AUC(1 は CatBoost 単体、3 以降はアンサンブル。下の「提出ごとのスコアの推移」と同じ値)。各施策の採否は ⑦ の paired DeLong 検定で判断した。
 
@@ -41,8 +41,8 @@ CV は、その時点で提出した構成の OOF AUC(1 は CatBoost 単体、3 
 ![パイプライン全体像](docs/pipeline_overview.png)
 
 ```
-① EDA → ② Baseline → ③ Feature Engineering → ④ Train and Evaluate → ⑥ Ensemble → submit
-                        (関数の定義)            (学習・OOF の保存)  ↑        (oof/ を読む)
+① EDA → ② Baseline → ③ Feature Engineering → ④ Model Train and Evaluate → ⑥ Ensemble → submit
+                        (関数の定義)            (学習・OOF の保存)  ↑              (oof/ を読む)
                                                       │ 引数を変えて呼ぶ
                                             ⑤ Hyperparameter Tuning
                           ⑦ Paired DeLong Test … ③〜⑥ の変更を採用するかを判定
@@ -107,7 +107,7 @@ kaggle/                                  # リポジトリのルート(コンペ
 | ① | EDA(探索的データ分析) | `01_eda.py` | `01_eda.ipynb` | `datacheck/*.png` |
 | ② | Baseline(ベースライン) | `02_baseline_<model>.py` | `02_baseline.ipynb` | `submit/submission_baseline_<model>.csv` |
 | ③ | Feature Engineering(特徴量エンジニアリング) | `03_feature_engineering_<model>.py` | `03_feature_engineering.ipynb` | (関数のみ。実行しない) |
-| ④ | Train and Evaluate(学習と評価) | `04_model_train_and_evaluate_<model>.py` | `04_model_train_and_evaluate.ipynb` | `oof/` `submit/` `importance/` |
+| ④ | Model Train and Evaluate(モデルの学習と評価) | `04_model_train_and_evaluate_<model>.py` | `04_model_train_and_evaluate.ipynb` | `oof/` `submit/` `importance/` |
 | ⑤ | Hyperparameter Tuning(ハイパーパラメータ調整) | `05_hyperparameter_tuning.py` | `05_hyperparameter_tuning.ipynb` | `docs/hyperparameter_tuning_results.csv` |
 | ⑥ | Ensemble(アンサンブル) | `06_ensemble_hill_climbing.py` | `06_ensemble.ipynb` | `submit/submission_hillclimb.csv` |
 | ⑦ | Paired DeLong Test(対応のある DeLong 検定) | `07_compare_predictions.py` | (`06_ensemble.ipynb` に含む) | 採否判定 |
@@ -237,7 +237,7 @@ CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_st
 > `src/03_feature_engineering_<model>.py` は**関数の定義のみ**、`src/04_model_train_and_evaluate_<model>.py` が**実行**という分担。
 > この分離により、同じ関数を別の検証スクリプトからも再利用できる。
 
-## ④ Train and Evaluate(学習と評価)
+## ④ Model Train and Evaluate(モデルの学習と評価)
 
 ③の関数で特徴量を作り、交差検証(CV)でモデルを学習・評価して、予測と提出ファイルを保存する工程。
 
