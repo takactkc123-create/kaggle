@@ -143,8 +143,16 @@ kaggle/                                  # リポジトリのルート(コンペ
 
 Jupyter で開く際は、カーネルに **`.venv` の Python** を選ぶこと。
 
-**ノートブックは `src/` を読み込んで動く。クローン・持ち出しの際は `src/` も必ず含めること。**
-04・06 などは特徴量を作る関数やモデル本体を `src/` から import しており、`notebooks/` だけでは動かない。
+**03〜06 のノートブックは `src/` を読み込む。クローン・持ち出しの際は `src/` も必ず含めること。**
+
+| Notebook | `src/` から読み込むもの | 実行前に必要なもの |
+|---|---|---|
+| 01・02 | なし(ノートブックだけで動く) | `data/` |
+| 03 | 03-7 章で本番と照合するための特徴量の関数と採否表(特徴量そのものはノートブックの中で作る) | `data/`(元データを含む) |
+| 04 | 特徴量の関数、RealMLP のモデル本体、`FIXED`、Feature Importance の関数 | `data/`(元データを含む)、`oof/`(`src/` の 04 を先に実行して作る) |
+| 05 | `05_hyperparameter_tuning.py`(探索の設定・見積もり・記録の表示) | なし(記録は `docs/` にある) |
+| 06 | `07_compare_predictions.py`(DeLong 検定) | `data/`、`oof/` |
+
 関数をノートブックへ移さない理由は `notebooks/04_model_train_and_evaluate.ipynb` の冒頭に記載している
 (要点: 本番の正本を1か所に保つため。Target Encoding は fold ごとに作り直すので、列名だけ渡しても `src/` の関数は必要になる)。
 
@@ -297,7 +305,7 @@ uv run src/feature_importance.py                  # LightGBM・XGBoost・CatBoos
 uv run src/feature_importance.py lgbm --top 20    # モデルと表示する列数を指定
 ```
 
-図と、読み取れること(重要度は相関ではない)は `notebooks/04_model_train_and_evaluate.ipynb` の 7 章。RealMLP は木のモデルのような重要度を持たないので対象外。
+図と、読み取れること(重要度は相関ではない)は `notebooks/04_model_train_and_evaluate.ipynb` の 04-7 章。RealMLP は木のモデルのような重要度を持たないので対象外。
 
 ## ⑤ Hyperparameter Tuning(ハイパーパラメータ調整)
 
