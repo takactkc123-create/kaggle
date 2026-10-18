@@ -1,3 +1,14 @@
 2607/
 2608/
 python_memo.md
+
+# 認証情報(どのコンペのフォルダでもコミットしない)
+kaggle.json
+credentials*.json
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+**/.claude/settings.local.json
