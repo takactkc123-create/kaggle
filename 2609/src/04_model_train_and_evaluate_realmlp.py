@@ -527,6 +527,7 @@ class RealMLP_TD_Classifier(BaseEstimator):
 # CONFIG (yekenot 公開実装と同一)
 # ══════════════════════════════════════════════════════════════════════════════
 # RealMLP の設定を既定値から作り、指定分だけ上書きする
+# RealMLP の本番のパラメータはここ(05 の FIXED の対象外)。epochs を増やすと悪化するので 2 のまま使う
 def make_config(**over):
     cfg = {
         # --- architecture ---

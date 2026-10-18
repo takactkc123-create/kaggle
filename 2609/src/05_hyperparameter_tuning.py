@@ -33,22 +33,34 @@ RUNTIME = {"lgbm": 250, "xgb": 650, "catboost": 1500}   # catboost は本番設�
 BASELINE = {"lgbm": 0.946200, "xgb": 0.946087, "catboost": 0.945924, "realmlp": 0.946025}
 
 # 本番構成の固定部分。ここは探索対象ではない(収束設定など。作る列は 04 が te_plan() どおりに決める)。
+# 値の根拠は notebooks/05_hyperparameter_tuning.ipynb の 05-10 章。ここにない値は 04 の引数の既定値
+# (LightGBM の num_leaves=31、CatBoost の depth=6 など)。RealMLP は対象外で、値は 04_model_train_and_evaluate_realmlp.py の make_config() にある。
 FIXED = {
     "lgbm": [
-        "--max_bin", "1024", "--feature_fraction", "0.3", "--max_depth", "5",
-        "--folds", "5", "--learning_rate", "0.03", "--n_estimators", "8000",
-        "--early_stopping", "200", "--n_jobs", "7", "--interaction", "income", "--save",
+        "--max_bin", "1024",                                   # 年収の細かい値をビンで潰さない(特徴量の工程で採用)
+        "--feature_fraction", "0.3", "--max_depth", "5",       # 列サブサンプリング(外部ノートブックの調査で見つけた見落とし。+0.0002)
+        "--folds", "5",
+        "--learning_rate", "0.03", "--n_estimators", "8000",   # 収束の確認(既定の 100 本では学習しきれていなかった。+0.0008)
+        "--early_stopping", "200",                             # 同上。木の本数は early stopping で決める
+        "--n_jobs", "7",                                       # 8 コアのうち 1 つを空ける(精度には関係しない)
+        "--interaction", "income",                             # 交互作用の制約(Feature Importance から立てた仮説。単体 +0.000091)
+        "--save",
     ],
     "xgb": [
-        "--max-bin", "1024",
-        "--set-param", "colsample_bytree=0.3", "--set-param", "max_depth=5",
-        "--folds", "5", "--learning-rate", "0.03", "--n-estimators", "8000",
-        "--early-stopping", "200", "--n-jobs", "7", "--save",
+        "--max-bin", "1024",                                   # LightGBM と同じ
+        "--set-param", "colsample_bytree=0.3", "--set-param", "max_depth=5",   # LightGBM と同じ(+0.000163)
+        "--folds", "5",
+        "--learning-rate", "0.03", "--n-estimators", "8000",   # 収束の確認(LightGBM と同じ)
+        "--early-stopping", "200",
+        "--n-jobs", "7",
+        "--save",
     ],
     "catboost": [
         "--folds", "5",
-        "--iters", "1000", "--lr", "0.06", "--fast",
-        "--border", "64", "--hc-border", "1024", "--threads", "7",
+        "--iters", "1000", "--lr", "0.06",                     # 既定の 1000 本のまま学習率を指定(収束の確認以降の設定)
+        "--fast",                                              # 実行時間を抑える設定(Plain・組み合わせの統計なし・border 64)
+        "--border", "64", "--hc-border", "1024",               # 年収など値の種類が多い列だけビンを 1024 に(特徴量の工程で採用)
+        "--threads", "7",
     ],
 }
 
