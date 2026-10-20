@@ -24,7 +24,7 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 
 ## 指揮官(ユーザー)の承認が必要なこと
 
-- Kaggle への提出(CV の改善に根拠があるものだけ)
+- Kaggle への提出(CV の改善に根拠があるものだけ)。提出は CLI の `kaggle competitions submit` だけで行い、Python の API からは提出しない(実行前の確認を必ず通すため)
 - git の push
 - 大規模なハイパーパラメータ探索、多数の Feature Engineering パターン × フルデータ 5-fold の総当たり(所要時間の見積もりを添える)
 - 採用基準に届かない構成の採用
