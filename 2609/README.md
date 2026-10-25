@@ -383,8 +383,10 @@ hill climbing は OOF 上の偶然の当たりも拾うため、重みは ⑦ �
 
 ### 提出
 
+kaggle CLI はプロジェクトの依存に含めていないため、`uvx` で一時的に実行する(認証ファイル kaggle.json が必要)。
+
 ```bash
-kaggle competitions submit -c playground-series-s6e9 -f submit/submission_hillclimb.csv -m "<説明>"
+uvx kaggle competitions submit -c playground-series-s6e9 -f submit/submission_hillclimb.csv -m "<説明>"
 ```
 
 `06_ensemble_hill_climbing.py` は実行のたびに `submit/submission_hillclimb.csv` を上書きし、`oof/` の予測をすべて候補にする。そのため、不採用の予測は `experiments_rejected/` に移して候補から外している。
@@ -491,13 +493,23 @@ z=+8.48 で誤差でないことが確定した。
 git clone https://github.com/takactkc123-create/kaggle.git
 cd kaggle/2609
 uv sync
-
-# データの取得(Kaggle API の認証ファイル kaggle.json と、コンペの参加規約への同意が必要)
-uv run kaggle competitions download -c playground-series-s6e9 -p data --unzip
-uv run kaggle datasets download -d itzzomkar/ev-adoption-behavior-and-range-anxiety -p data --unzip
 ```
 
-- 2 つ目は**元データ**(`data/EV_Adoption_and_Range_Anxiety_Dataset.csv`、1 万行)。コンペのデータはこれを元に Kaggle が生成したもので、
+データは次の 2 つを取得して `data/` に置く(コンペの参加規約への同意が必要)。
+
+| データ | 取得先 | `data/` に置くファイル |
+|---|---|---|
+| コンペのデータ | [コンペの Data ページ](https://www.kaggle.com/competitions/playground-series-s6e9/data) | `train.csv` / `test.csv` / `sample_submission.csv` |
+| 元データ | [EV Adoption Behavior and Range Anxiety](https://www.kaggle.com/datasets/itzzomkar/ev-adoption-behavior-and-range-anxiety) | `EV_Adoption_and_Range_Anxiety_Dataset.csv` |
+
+kaggle CLI を使う場合は、プロジェクトの依存に含めていないため `uvx` で一時的に実行する(Kaggle API の認証ファイル kaggle.json が必要)。
+
+```bash
+uvx kaggle competitions download -c playground-series-s6e9 -p data --unzip
+uvx kaggle datasets download -d itzzomkar/ev-adoption-behavior-and-range-anxiety -p data --unzip
+```
+
+- **元データ**(`data/EV_Adoption_and_Range_Anxiety_Dataset.csv`、1 万行)について。コンペのデータはこれを元に Kaggle が生成したもので、
   コンペの Data ページで使用が認められている(CC0)。
 - 元データは学習には使わない。RealMLP の特徴量 1 列(年収ごとの元データでの購入率)を作るためだけに使う。
   **元データなしでも上位15%のライン(536位)付近。** RealMLP の元データの列を、train だけで作る年収の購入率に置き換えると Private 0.94541 で 529〜572位相当(上位14.8〜16.0%。締切後の提出で確認)。本番(元データあり)は 0.94543 / 376位

@@ -6,7 +6,6 @@ readme = "README.md"
 requires-python = ">=3.14,<3.15"
 dependencies = [
     "catboost>=1.2.10",
-    "kaggle>=2.2.4",
     "lightgbm>=4.7.0",
     "matplotlib>=3.11.1",
     "numpy>=2.5.2",
