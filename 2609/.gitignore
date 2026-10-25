@@ -25,6 +25,3 @@ main.py
 kaggle_kernel_*/
 tools/
 .claude/agents/lookup-transformer-lead.md
-
-# プロンプト内に参照があるため非公開
-prompt.md

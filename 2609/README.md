@@ -92,7 +92,7 @@ kaggle/                                  # リポジトリのルート(コンペ
     ├── tools/ 【ignore】                 # 図の作成などの補助スクリプト
     ├── .venv/ 【ignore】                 # uv が作る仮想環境
     ├── ignore_docs/ 【ignore】           # 実験ログ(Log.md)・外部調査・参考カーネルの調査結果などの記録
-    └── prompt.md / main.py 【ignore】
+    └── main.py 【ignore】
 ```
 
 ---
