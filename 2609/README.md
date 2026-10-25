@@ -84,8 +84,6 @@ kaggle/                                  # リポジトリのルート(コンペ
     ├── oof/ 【ignore】                   # oof_<model>.npy / pred_<model>.npy(アンサンブル用)
     ├── submit/ 【ignore】                # submission_<model>.csv
     ├── importance/ 【ignore】            # feature importance の棒グラフと値(CSV)
-    ├── experiments_rejected/ 【ignore】  # 不採用の実験成果物(記録として保持)
-    ├── backup_*/ 【ignore】              # バックアップ
     ├── catboost_info/ 【ignore】         # CatBoost が学習時に書き出すログ
     ├── kernels/ 【ignore】               # 取得した公開カーネル
     ├── kaggle_kernel_*/ 【ignore】       # Kaggle Notebook で動かしたモデル
