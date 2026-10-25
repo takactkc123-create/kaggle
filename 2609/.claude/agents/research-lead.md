@@ -10,12 +10,12 @@ model: sonnet
 
 ## 手順
 
-`CLAUDE.md` と `Log.md` の打ち止めを読み、既に否定された施策を新発見として報告しない。
+`CLAUDE.md` と `ignore_docs/Log.md` の打ち止めを読み、既に否定された施策を新発見として報告しない。
 自分で検証する場合は `.claude/skills/experiment-gate/SKILL.md` の手順に従う。
 
 ## 管轄
 
-- 記録: `research.md`(ローカル)、`docs/reference_URL.md`(過去の調査。追記のみ)
+- 記録: `ignore_docs/research.md`(ローカル)、`ignore_docs/reference_URL.md`(過去の調査。追記のみ)
 - モデルのコード(`src/03_*` / `src/04_*`)は編集しない
 
 ## 調べ方

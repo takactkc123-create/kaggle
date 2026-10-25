@@ -11,7 +11,7 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 | `.claude/skills/tabular-workflow/` | 工程 ①〜⑦ の進め方と完了条件、最終提出の選び方 |
 | `.claude/skills/experiment-gate/` | 実験1本の手順(バックアップ → スクリーニング → フル CV → DeLong 検定 → 後処理 → 記録) |
 | `.claude/agents/` | 担当リーダー(管轄とモデル固有の注意) |
-| `Log.md`(ローカルのみ) | 実験の経過と数値の根拠。成功も失敗も記録する |
+| `ignore_docs/Log.md`(ローカルのみ) | 実験の経過と数値の根拠。成功も失敗も記録する |
 
 | 担当 | 定義ファイル | 管轄 |
 |---|---|---|

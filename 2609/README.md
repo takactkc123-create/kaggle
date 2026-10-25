@@ -51,7 +51,7 @@ CV は、その時点で提出した構成の OOF AUC(1 は CatBoost 単体、3 
 ### ディレクトリ構成
 
 【ignore】は `.gitignore` の対象(リポジトリに含めない)。データと実行成果物は再現できるため、記録類はローカルで管理するため除外している。
-詳細な実験ログ(`Log.md`)や外部調査の記録も、ローカルだけで管理している。
+詳細な実験ログ(`ignore_docs/Log.md`)や外部調査の記録も、ローカルだけで管理している。
 
 ```
 kaggle/                                  # リポジトリのルート(コンペごとのフォルダ)
@@ -75,8 +75,7 @@ kaggle/                                  # リポジトリのルート(コンペ
     │   ├── eda_results.md               # EDA の結果
     │   ├── fe_results_<model>.md / fe_results_all.md   # 各担当の検証記録
     │   ├── features_<model>.json        # 本番で使っている列名(--dump-features で生成)
-    │   ├── hyperparameter_tuning_results.csv   # ⑤ の試行ごとの記録(05 が書き、05 の --report が読む)
-    │   └── reference_URL.md 【ignore】   # 参考カーネルの調査結果
+    │   └── hyperparameter_tuning_results.csv   # ⑤ の試行ごとの記録(05 が書き、05 の --report が読む)
     ├── .claude/agents/                  # サブエージェントの定義
     │   └── lookup-transformer-lead.md 【ignore】
     ├── .claude/skills/                  # 進め方と実験の手順(コンペに依存しない)
@@ -92,7 +91,8 @@ kaggle/                                  # リポジトリのルート(コンペ
     ├── kaggle_kernel_*/ 【ignore】       # Kaggle Notebook で動かしたモデル
     ├── tools/ 【ignore】                 # 図の作成などの補助スクリプト
     ├── .venv/ 【ignore】                 # uv が作る仮想環境
-    └── Log.md / nippo.md / research.md / prompt.md / main.py / fe_results_lookup.md 【ignore】   # 実験ログなどの記録
+    ├── ignore_docs/ 【ignore】           # 実験ログ(Log.md)・外部調査・参考カーネルの調査結果などの記録
+    └── prompt.md / main.py 【ignore】
 ```
 
 ---

@@ -20,14 +20,10 @@ kaggle_kernel_*/output/
 *.log
 
 # 公開対象外(ローカルでのみ管理)
-Log.md
-research.md
-nippo.md
+ignore_docs/
 main.py
 kaggle_kernel_*/
 tools/
-fe_results_lookup.md
-docs/reference_URL.md
 .claude/agents/lookup-transformer-lead.md
 
 # プロンプト内に参照があるため非公開
