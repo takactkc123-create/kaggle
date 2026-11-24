@@ -58,12 +58,12 @@ Kaggle コンペ [Playground Series - Season 6, Episode 9](https://www.kaggle.co
 
 - 実行コマンドは README「現行ベストの再現コマンド」、**パラメータの正本は `src/05_hyperparameter_tuning.py` の `FIXED`**
 - `notebooks/04_model_train_and_evaluate.ipynb` は 4 モデルを本番と同じ設定で学習し、OOF と `FIXED` との一致を確認する
-- 改善の内訳: Feature Engineering +0.004 / 収束確認 +0.0008 / 列サブサンプリング +0.0002 / RealMLP 追加 +0.0005 / LightGBM の交互作用の制約 +0.00005。
+- 改善の内訳: Feature Engineering +0.004 / 収束確認(XGBoost で +0.0008) / 列サブサンプリング +0.0002 / RealMLP 追加 +0.0005 / LightGBM の交互作用の制約 +0.00005。
   Private の順は CV の順と一致した(詳しい経緯は Log.md)
 
 ## ファイル構成の規約
 
-**ファイル名の先頭の番号が工程の順番**(一覧は README「ソースコード」)。
+**ファイル名の先頭の番号が工程の順番**(一覧は README「ソースコード・Notebooks」)。
 
 - CV は **StratifiedKFold(n_splits=5, shuffle=True, random_state=42)** で全モデル統一。**変更禁止**
 - 目的変数は `(train["Will_Buy_EV"] == "Yes").astype(int)`。`read_csv` までのフローは `02_baseline_*.py` と同一

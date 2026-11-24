@@ -9,7 +9,9 @@ EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二�
 - 開催: Kaggle 主催の Playground Series
 - 期間: 2026-09-01〜09-30 の 1 か月
 - 参加: 3,575チーム
-- データ: 顧客の属性・通勤距離・充電環境・補助金の有無など 13 列。train 668,665 行 / test 286,571 行。
+- データ: 顧客の属性・通勤距離・充電環境・補助金の有無など 13 列。train.csv(学習用データ) 668,665 行 / test.csv(テスト用データ) 286,571 行。
+- 提出: kaggle 側より提供された`train.csv`,`test.csv`よりモデルを作成し、EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測した`submission.csv`を作成し、提出する。
+- 評価基準: `submission.csv`を提出し、コンペ終了後にスコア(`ROC-AUC(0~1)`)および順位が公開される。
 
 ## 結果
 
@@ -17,38 +19,189 @@ EV(電気自動車)を購入するか(`Will_Buy_EV`: Yes/No)を予測する二�
 
 | 構成 | CV | Public LB | Private LB |
 |---|---|---|---|
-| LightGBM・XGBoost・RealMLP の順位平均(LightGBM に交互作用の制約) | **0.946310** | 0.94644 | **0.94543** |
+| LightGBM・XGBoost・RealMLP のアンサンブル | 0.946310 | 0.94644 | **0.94543** |
 
-Private LB は test の 80%、Public LB は残り 20% で採点される。Private の順は CV の順と一致した(「[提出ごとのスコアの推移](#提出ごとのスコアの推移)」)。
+**参考**
+- CV: 自作のモデル内でスコアチェックする参考指標
+- Public LB: 提出のたびに表示される参考指標（正解データの一部(test の 20%)で採点した結果）
+- Private LB: コンペ終了後に公開される最終スコア（残りの test の 80% で採点。このスコアを元に最終順位が決定）
 
-### スコアアップに向けて取り組んだこと(ベースライン → アンサンブル)
+## スコアの推移（詳細は各工程にて説明）
 
-| # | 工程 | 取り組み | CV |
-|---|---|---|---|
-| 1 | ② Baseline | カテゴリ列を落とさずにモデルへ渡す(7 列 → 13 列。+0.057) | 0.94156(CatBoost) |
-| 2 | ③ Feature Engineering | 厳密値 Target Encoding(+0.003)、Out-of-Fold によるリーク対策、Count Encoding | — |
-| 3 | ④ Model Train and Evaluate | 収束の確認(学習率を下げ、early stopping で木の本数を決める。+0.0008) | 0.94555 |
-| 4 | ③ Feature Engineering | 平滑化3種の Target Encoding + Smooth Keys + digit + ビン数 1024、CatBoost の catify | 0.94604 |
-| 5 | ⑥ Ensemble | 異種モデル RealMLP の追加(+0.0005)、列サブサンプリング(+0.0002)、3 モデルの順位平均 | 0.946234 |
-| 6 | ⑤ Hyperparameter Tuning | 18 試行すべて誤差か悪化で、採用ゼロ | — |
-| 7 | ③ Feature Engineering | 重複する列の整理、交互作用 1 組、RealMLP に年収の Target Encoding | 0.946264 |
-| 8 | ④ Model Train and Evaluate | Feature Importance から、LightGBM に交互作用の制約(+0.000047) | **0.946310** |
+| 提出 | 主な施策(工程) | CV | Private LB | Private の順位 |
+|---|---|---|---|---|
+| 1 | 元のデータの列だけで学習した基準のモデル(②) | 0.94156 | 0.94106 | 約2,300位(上位64%) |
+| 2 | 「値ごとの購入率」と「値ごとの人数」を特徴量に追加(③)。木の本数を増やし、学習しきるようにした(⑤) | 0.94555 | 0.94479 | 約1,380位(39%) |
+| 3 | 購入率の特徴量を補強(③) | 0.94604 | 0.94529 | 約950位(27%) |
+| 4 | 1本の木が見る列を絞った(⑤)。仕組みの違うモデルを加え、3モデルの予測を混ぜた(⑥) | 0.946234 | 0.94539 | 約640位(18%) |
+| 5 | 重複した列を整理し、特徴量を少し追加(③) | 0.946264 | 0.94540 | 約590位(17%) |
+| **6** | **年収の列とほかの列を、別々の枝で学ばせた(⑤)= 最終提出** | **0.946310** | **0.94543** | **376位(10.5%)** |
 
-CV は、その時点で提出した構成の OOF AUC(1 は CatBoost 単体、3 以降はアンサンブル。下の「提出ごとのスコアの推移」と同じ値)。各施策の採否は ⑦ の paired DeLong 検定で判断した。
+- 改善の大半は特徴量エンジニアリングによるもの(③、+0.004)。ただし、列どうしを足し引きしたり組み合わせたりした特徴量は、ほとんど効かなかった
+- CV が上がった順に Private も上がった。各施策を採用するかは ⑦ の検定で判断した。施策の詳細は各工程の節を参照
 
 ## プロセス全体像
 
 ![パイプライン全体像](docs/pipeline_overview.png)
 
-```
-① EDA → ② Baseline → ③ Feature Engineering → ④ Model Train and Evaluate → ⑥ Ensemble → submit
-                        (関数の定義)            (学習・OOF の保存)  ↑              (oof/ を読む)
-                                                      │ 引数を変えて呼ぶ
-                                            ⑤ Hyperparameter Tuning
-                          ⑦ Paired DeLong Test … ③〜⑥ の変更を採用するかを判定
-```
+---
 
-### ディレクトリ構成
+## ソースコード・Notebooks
+
+`src/` が本番用の`.py`ファイル、`notebooks/` は同じ番号の工程を上から追う説明用`.ipynb`ファイル。
+詳しい説明と結果は各ノートブックを参照。
+各ファイルの先頭に下記の表と対になる連番を記載。
+
+| # | 工程 | 役割詳細 | ファイル名(`src/` は `.py`、`notebooks/` は `.ipynb`) | 出力 |
+|---|---|---|---|---|
+| ① | EDA(探索的データ分析) | データ・値の種類、各説明変数ごとの購入率を調べ、特徴量の仮説を立てる工程 | `01_eda` | `datacheck/*.png` |
+| ② | Baseline(ベースライン) | 元のデータ列(`train.csv`,`test.csv`)だけでモデルを学習し、基準のスコアを作る工程 | `02_baseline` ※ | `submit/submission_baseline_<model>.csv` |
+| ③ | Feature Engineering(特徴量エンジニアリング) | EDAで可視化した内容から仮説を作り、モデル精度向上を狙った新しい特徴量を作成する関数を定義する工程(実行は ④で実施) | `03_feature_engineering` ※ | 関数定義のみ |
+| ④ | Model Train and Evaluate(モデルの学習と評価) | ③ で作成した特徴量でモデルを学習・評価し、予測を保存する工程 | `04_model_train_and_evaluate` ※ | `oof/` `submit/` `importance/` |
+| ⑤ | Hyperparameter Tuning(ハイパーパラメータ調整) | 04 のパラメータ設定値を探索し、スコア向上のベストパラメータを決定する工程 | `05_hyperparameter_tuning` | `docs/hyperparameter_tuning_results.csv` |
+| ⑥ | Ensemble(アンサンブル) | 複数のモデルを組み合わせ、単体モデルより高い精度を出すための工程 | 本番: `06_ensemble_hill_climbing.py`<br>説明: `06_ensemble.ipynb` | `submit/submission_hillclimb.csv` |
+| ⑦ | Paired DeLong Test(対応のある DeLong 検定) | 特徴量エンジニアリング等、データを加工した際の AUC の差が偶然かを判定し、採用するか否かを決める工程 | 本番: `07_compare_predictions.py`<br>説明: `06_ensemble.ipynb` に含む | 採否判定のみ |
+| — | 補助 | 関数の採否表(`FUNC_STATUS`)、列名の JSON 出力、不採用の関数の記録。学習には関わらない | 本番: `03_feature_engineering_AllCatalog.py`<br>説明: `03_feature_engineering.ipynb` の 03-7 章 | — |
+| — | 補助 | Feature Importance(特徴量の重要度)の上位の列。本番の成果物には書き込まない | 本番: `feature_importance.py`<br>説明: `04_model_train_and_evaluate.ipynb` の 04-7 章 | — |
+
+※ `src/` の `.py` はモデルごとに分かれ、末尾に `_<model>` が付く(例: `02_baseline_lgbm.py`。`<model>` は `lgbm` / `xgb` / `catboost` / `realmlp`。② は RealMLP なし)。
+
+- ノートブックは、カーネルに **`.venv` の Python** を選べば、リポジトリのルートと `notebooks/` のどちらから起動しても動く
+- **03〜06 のノートブックは `src/` の関数を読み込む**ので、持ち出すときは `src/` も含める(理由は 04 の冒頭)。実行前に、05 以外は `data/` が、04・06 は `oof/`(`src/` の 04 を先に実行して作る)も必要
+
+---
+## ① EDA(Exploratory Data Analysis:探索的データ分析)
+
+モデルを作る前に、データの分布と目的変数との関係を調べ、特徴量の仮説を立てる工程。
+
+- 欠損なし、購入率 17.5%
+- 購入率を最も大きく動かすのは環境意識(`Environmental_Concern_Level`。レベル1で約1% → レベル5で約52%)
+- 年収は 13,214 種類の値を持ち、木系モデル(LightGBM等)の既定のビン数(255)では値ごとの違いが拾えない → ③ の厳密値 Target Encoding とビン数の引き上げにつながった
+
+詳細は [notebooks/01_eda.ipynb](notebooks/01_eda.ipynb)(出力図は [`datacheck/`](datacheck/)にも保存済)
+
+---
+## ② Baseline(ベースライン:基準となるモデル)
+
+特徴量を作らず元の列だけで3つのモデル`LightGBM`,`XGBoost`,`CatBoost`を学習し、以降の改善を測る基準のスコアを作る工程。
+
+- CV の分け方は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_state=42)`。この分割をそろえ、⑥ のアンサンブルと ⑦ の DeLong 検定の前提を合わせる。
+- 数値列のみ(7列)の学習と、カテゴリ列を加えた元データ全て(13列)を用いた学習をそれぞれ行った。
+- 数値列のみのモデルより、元データ全てを用いたモデルのスコアが約 +0.057(数値列のみ 0.884 → 13列 0.941) 上昇した。
+
+> カテゴリ列にもモデルの精度に重要な要素があると考えられ、以降の過程では元データ(13列)で実行したモデルのスコアを基準に精度改善を行う。
+
+詳細は [notebooks/02_baseline.ipynb](notebooks/02_baseline.ipynb)(モデル別のスコアと Private LB での順位相当)
+
+---
+## ③ Feature Engineering(特徴量エンジニアリング)
+
+EDA の仮説から、モデルが学びやすい形の特徴量を作る関数を定義する工程(ここでは作成のみ行い、実行は ④ にて実施する)。
+
+> **GBDT**(Gradient Boosting Decision Tree:勾配ブースティング決定木)は、決定木を少しずつ足して誤りを補正していくモデルの総称。このリポジトリでは LightGBM・XGBoost・CatBoost を指す。
+> **RealMLP** は数値を埋め込みに変えて学ぶニューラルネットワーク。GBDT と予測の間違え方が違うため、アンサンブルにて GBDT を補い、スコアの向上を目指す目的で ③ から導入した。
+
+**アプローチ方法**: ① で、このデータは列どうしの組み合わせより、**1つの列の値ごとの細かい違い**に情報があると分かった。
+特に年収は 13,214 種類の値があるのに、木のモデルは値を 255 個の区間(ビン)にまとめて扱うため、近い値どうしの購入率の違いを見落とす。
+そこで「その値を持つ人のうち何%が買ったか(購入率)」「その値を持つ人が何人いるか」を新しい列として計算し、モデルに直接渡した。
+
+**精度が改善した主な施策**(改善幅は OOF AUC の差)
+
+| 施策 | 何をする特徴量か | 改善幅 | 対象モデル |
+|---|---|---|---|
+| **値ごとの購入率**(厳密値 Target Encoding) | 年収などを区間に丸めず、値そのものごとに購入率を計算して列にする(例: 年収が 52,300 ドルの人の購入率)。最も精度が改善した施策 | **+0.00345** / 約 +0.003 | LightGBM / XGBoost |
+| **値の出現回数**(Count Encoding) | その値を持つ人の人数を列にする。購入率とは別の情報になる | +0.00083 / +0.00049 | LightGBM / XGBoost |
+| **購入率の補強**(平滑化3種 + Smooth Keys + digit + ビン数 1024) | 人数の少ない値は購入率がぶれるので、全体の購入率に寄せる強さを3通り用意する。あわせて、年収を粗く丸めた値ごとの購入率、年収の各桁の列を加え、木が値を区切る区間を 255 → 1024 に増やす | +0.00052 / +0.00048 | LightGBM / XGBoost |
+| **組み合わせ1組**(自宅充電の可否 × 自宅近くの充電スタンド数) | EDA で見つかった唯一の、組み合わせで購入率が変わる2列を1つの列にする | +0.000012 / +0.000028。採用基準未満だが CV 最高のため採用 | LightGBM / RealMLP |
+
+詳細は [notebooks/03_feature_engineering.ipynb](notebooks/03_feature_engineering.ipynb)(全施策と不採用の一覧)、各施策の検証記録は `docs/fe_results_*.md`
+
+---
+## ④ Model Train and Evaluate(モデルの学習と評価)
+
+③ の特徴量で4モデルを交差検証(CV)で学習し、OOF 予測と提出ファイルを保存する。
+
+| モデル | ② Baseline | OOF AUC | 列数 | 備考 |
+|---|---|---|---|---|
+| **LightGBM** | 0.94123 | **0.94620** | 46 | アンサンブル採用。交互作用の制約あり(⑤) |
+| **XGBoost** | 0.94124 | **0.94609** | 69 | アンサンブル採用 |
+| **RealMLP** | — | **0.94603** | 39 | アンサンブル採用。GBDT との相関が低く多様性を供給 |
+| CatBoost | 0.94156 | 0.94592 | 43 | アンサンブルの重みは 0 |
+
+詳細は [notebooks/04_model_train_and_evaluate.ipynb](notebooks/04_model_train_and_evaluate.ipynb)(本番の OOF との一致の確認、04-7 で Feature Importance)。実行コマンドは「[セットアップ](#セットアップクローンから再現まで)」
+
+---
+## ⑤ Hyperparameter Tuning(ハイパーパラメータ調整)
+
+学習率や木の深さなど、学習前に決めておく設定値(ハイパーパラメータ)を変えて、より良い組み合わせを探す工程。
+
+- **実施したこと**: 下表の本番の設定を基準に、値を1つだけ変えてフル 5-fold で学習し、基準との差を ⑦ で判定した。対象は葉の数・木の深さ・列や行の割合など 18 試行(LightGBM 3 / XGBoost 10 / CatBoost 5。ほかに LightGBM の深さ 2 本)
+- **結果**: 基準を上回ったものはなく(最大でも CatBoost の深さ 5 で +0.00006)、採用ゼロ。本番は下記の設定で実行した。
+
+| 設定 | LightGBM | XGBoost | CatBoost |
+|---|---|---|---|
+| 木の深さ | 5 | 5 | 6(既定) |
+| 1本の木が見る列の割合 | 30% | 30% | 全列 |
+| 学習率 / 木の本数 | 0.03 / early stopping で決定(上限 8000) | 同左 | 0.06 / 1000 |
+| ビン数 | 1024 | 1024 | 64(値の種類が多い列は 1024) |
+
+- 表の値は、探索の前に次の2つの見落としを直して決めたもの(18 試行はその確認になった)
+  - **木の本数**: 特徴量を増やしたのに既定の 100 本のままで、学習しきれていなかった → 学習率を下げ、本数は early stopping で決める(XGBoost で +0.0008)
+  - **列の割合と深さ**: どの木も最強の列を根に選び、似た木ばかりになっていた → 1本の木が見る列を 30%、深さを 5 に絞る(+0.0002)
+- 探索の後に、Feature Importance から立てた仮説で LightGBM に交互作用の制約を追加(年収系の列とそれ以外を同じ枝で組み合わせない。アンサンブル +0.000047)
+- 値の正本は `src/05_hyperparameter_tuning.py` の `FIXED`
+
+詳細は [notebooks/05_hyperparameter_tuning.ipynb](notebooks/05_hyperparameter_tuning.ipynb)
+
+---
+## ⑥ Ensemble(アンサンブル)
+
+複数のモデルの予測を組み合わせ、1つのモデルでの実行より高い精度を出すための工程。
+
+- 最終構成は LightGBM・XGBoost・RealMLP を 1/3 ずつ順位平均(CatBoost は重み 0)。CV 0.946310 / Private 0.94543
+- 混ぜ方は hill climbing(足すと OOF AUC が最も上がる候補を1つずつ選ぶ方法)で決め、重みは ⑦ で有意性を確認。GBDT 同士(`LightGBM`,`XGBoost`,`CatBoost`)は相関 0.993〜0.999 と同質で、仕組みの違う ニューラルネットワーク(`RealMLP`) が多様性を補った
+- `src/06_ensemble_hill_climbing.py` は `oof/` の予測をすべて候補にするため、不採用の予測は `experiments_rejected/` に移して候補から外す
+
+(補足)
+- **hill climbing とは**: 今のアンサンブルに足すと OOF AUC が最も上がる候補を1つずつ選び(同じモデルを何度選んでもよい)、どれを足しても上がらなくなったら止める方法
+- **採用した理由**: 重みの組み合わせを総当たりで試すより計算が速く、単体では弱くても他と違う予測をするモデルを自然に拾えるため
+
+詳細は [notebooks/06_ensemble.ipynb](notebooks/06_ensemble.ipynb)
+
+---
+## ⑦ Paired DeLong Test(対応のある DeLong 検定)
+
+> **DeLong 検定**: 2つの予測の AUC の差が統計的に意味のある差かを判定する方法。AUC のばらつき(標準誤差)を予測値から直接計算し、差を z 値(差が標準誤差の何倍か)で表す。z が大きいほど「偶然では説明できない差」になる。
+
+特徴量の追加・削除、パラメータの変更、アンサンブルの重みの変更などで OOF AUC が +0.0001 のようにわずかに変わったとき、その差が本当の改善か、データのばらつきによる偶然かを判定し、その変更を採用するかを決める。モデルは学習し直さず、④・⑥ で保存した変更前と変更後の OOF 予測を読み込んで比べるだけ。
+
+「対応のある(paired)」は、2つの予測が同じ行・同じ fold 分割で作られていることを利用する、という意味。両者に共通のノイズが差し引きで消えるため、AUC を別々に比べるより細かい差まで見分けられる。
+
+| | 導入前(AUC の差を直接比較) | DeLong 検定(導入後) |
+|---|---|---|
+| ノイズ床(SE) | 0.00015 | **0.00003 前後** |
+| 採否基準 | 差分 ≥ +0.0002 | 差分 ≥ +0.00008 **かつ** z ≥ 3 |
+
+- 導入前の 0.00015 は、意味のない乱数の列を1本足しただけで動いた OOF AUC の幅(公開ノートブックでの実測)。DeLong の 0.00003 前後は、`src/07_compare_predictions.py` が比較のたびに計算する差の標準誤差
+- DeLong の基準は外部の公開リポジトリの採否規則をそのまま採用した。z ≥ 3 で偶然を除き(偶然で出る確率 約0.3%)、差分 ≥ +0.00008 で順位にほぼ表れない小さすぎる改善を除く
+
+詳細は [notebooks/06_ensemble.ipynb](notebooks/06_ensemble.ipynb) の 06-6(算出式と、有意でない構成を提出して下がった例)
+
+---
+## まとめ
+
+- 最終結果は Private LB 0.94543、376位 / 3,575チーム(上位10.5%)。基準のモデル(約2,300位相当)から、特徴量エンジニアリング・学習設定の見直し・アンサンブルが、順位を上げた要因となった。
+- 最も効果的な施策は、値ごとの購入率や人数を特徴量として直接渡すことであり、モデルの特性のデメリットを補う効果があった(③)。列どうしを組み合わせた特徴量など、ある程度モデル自身が判断できる内容は加工してもスコアへの影響がほとんどなかった。
+- ⑦ の検定で偶然かどうかを確かめてから採用したため、採用したほとんどの施策で CV が上がった順に Private も上がった
+
+ここまでがコンペの取り組みの概要。以下は、リポジトリの構成・開発環境・再現の手順などの参考情報。
+
+---
+
+## ディレクトリ構成
+
+<details>
+<summary>クリックで開く</summary>
 
 【ignore】は `.gitignore` の対象(リポジトリに含めない)。データと実行成果物は再現できるため、記録類はローカルで管理するため除外している。
 詳細な実験ログ(`ignore_docs/Log.md`)や外部調査の記録も、ローカルだけで管理している。
@@ -93,386 +246,22 @@ kaggle/                                  # リポジトリのルート(コンペ
     └── main.py 【ignore】
 ```
 
----
+</details>
 
-## ソースコード
-
-**ファイル名の先頭の番号が工程の順番**。`src/` が本番、`notebooks/` は同じ番号の工程を上から追える説明版
-(03・04 は `src/` と結果が一致することをノートブックの中で確認している)。
-
-| # | 工程 | 本番(`src/`) | 説明版(`notebooks/`) | 出力 |
-|---|---|---|---|---|
-| ① | EDA(探索的データ分析) | `01_eda.py` | `01_eda.ipynb` | `datacheck/*.png` |
-| ② | Baseline(ベースライン) | `02_baseline_<model>.py` | `02_baseline.ipynb` | `submit/submission_baseline_<model>.csv` |
-| ③ | Feature Engineering(特徴量エンジニアリング) | `03_feature_engineering_<model>.py` | `03_feature_engineering.ipynb` | (関数のみ。実行しない) |
-| ④ | Model Train and Evaluate(モデルの学習と評価) | `04_model_train_and_evaluate_<model>.py` | `04_model_train_and_evaluate.ipynb` | `oof/` `submit/` `importance/` |
-| ⑤ | Hyperparameter Tuning(ハイパーパラメータ調整) | `05_hyperparameter_tuning.py` | `05_hyperparameter_tuning.ipynb` | `docs/hyperparameter_tuning_results.csv` |
-| ⑥ | Ensemble(アンサンブル) | `06_ensemble_hill_climbing.py` | `06_ensemble.ipynb` | `submit/submission_hillclimb.csv` |
-| ⑦ | Paired DeLong Test(対応のある DeLong 検定) | `07_compare_predictions.py` | (`06_ensemble.ipynb` に含む) | 採否判定 |
-| — | 補助 | `03_feature_engineering_AllCatalog.py` | `03_feature_engineering.ipynb` の 03-7 章 | 関数の採否表(`FUNC_STATUS`)、列名の JSON 出力、不採用の関数の記録。学習には関わらない |
-| — | 補助 | `feature_importance.py` | `04_model_train_and_evaluate.ipynb` の 04-7 章 | Feature Importance(特徴量の重要度)の上位の列。本番の成果物には書き込まない |
-| — | Claude Code | `.claude/agents/*.md` / `.claude/skills/*/SKILL.md` | — | `docs/fe_results_*.md` |
-
-| モデル | ② Baseline | ④ 最終構成 | 列数 |
-|---|---|---|---|
-| LightGBM | 0.94123 | **0.94620** | 46(交互作用の制約あり) |
-| XGBoost | 0.94124 | **0.94609** | 69 |
-| CatBoost | 0.94156 | 0.94592 | 43(アンサンブルの重みは 0) |
-| RealMLP | — | 0.94603 | 39 |
-| **アンサンブル**(LightGBM・XGBoost・RealMLP の順位平均) | — | **0.946310** | — |
-
-> **GBDT**(Gradient Boosting Decision Tree:勾配ブースティング決定木)は、決定木を少しずつ足して誤りを補正していくモデルの総称。このリポジトリでは **LightGBM・XGBoost・CatBoost の3つのモデル**を指す。
----
-## Notebooks
-
-工程を上から読んで追えるようにしたもの。リポジトリのルートから起動しても、`notebooks/` から
-起動しても動く(先頭セルで作業ディレクトリを揃えている)。
-
-`src/` と同じ番号体系。
-
-| Notebook | 対応する工程 | 内容 |
-|---|---|---|
-| `notebooks/01_eda.ipynb` | ① | データの素性、値の種類（ユニーク値）の数、値ごとの購入率 |
-| `notebooks/02_baseline.ipynb` | ② | 3モデルのベースライン(共通の CV ループ) |
-| `notebooks/03_feature_engineering.ipynb` | ③ | read_csv から特徴量の作成までを **GBDT 共通 → GBDT モデル別 → RealMLP** の順にノートブック内で実行し、意図と根拠を説明。本番の .py と値まで一致することも確認。不採用にした施策の一覧も載せる |
-| `notebooks/04_model_train_and_evaluate.ipynb` | ④ | 4モデルを本番と同じ特徴量・設定で上から順に学習し、本番の OOF と一致することを確認(約75分)。04-7 章で Feature Importance を横向き棒グラフで確認 |
-| `notebooks/05_hyperparameter_tuning.ipynb` | ⑤ | Hyperparameter Tuning の設計と所要時間の見積もり + 実行した 18 試行の結果(すべて誤差か悪化) |
-| `notebooks/06_ensemble.ipynb` | ⑥⑦ | ブレンドの再現。相関の確認と DeLong 検定による採否判定まで |
-
-Jupyter で開く際は、カーネルに **`.venv` の Python** を選ぶこと。
-
-**03〜06 のノートブックは `src/` を読み込む。クローン・持ち出しの際は `src/` も必ず含めること。**
-
-| Notebook | `src/` から読み込むもの | 実行前に必要なもの |
-|---|---|---|
-| 01・02 | なし(ノートブックだけで動く) | `data/` |
-| 03 | 03-7 章で本番と照合するための特徴量の関数と採否表(特徴量そのものはノートブックの中で作る) | `data/`(元データを含む) |
-| 04 | 特徴量の関数、RealMLP のモデル本体、`FIXED`、Feature Importance の関数 | `data/`(元データを含む)、`oof/`(`src/` の 04 を先に実行して作る) |
-| 05 | `05_hyperparameter_tuning.py`(探索の設定・見積もり・記録の表示) | なし(記録は `docs/` にある) |
-| 06 | `07_compare_predictions.py`(DeLong 検定) | `data/`、`oof/` |
-
-関数をノートブックへ移さない理由は `notebooks/04_model_train_and_evaluate.ipynb` の冒頭に記載している
-(要点: 本番の正本を1か所に保つため。Target Encoding は fold ごとに作り直すので、列名だけ渡しても `src/` の関数は必要になる)。
-
----
-## ① EDA(Exploratory Data Analysis:探索的データ分析)
-
-モデルを作る前にデータの分布・欠損・目的変数との関係を調べ、どんな特徴量で精度が改善しそうかの仮説を立てる工程。
-
-```bash
-uv run src/01_eda.py
-```
-
-`data/` の CSV を読み込み、`datacheck/` に図を保存する。図の構成と順番は `notebooks/01_eda.ipynb` と同じ(ファイル名先頭の連番が表示順)。
-
-| ファイル | ノートブックの節 | 内容 |
-|---|---|---|
-| [`01_列の一覧.png`](datacheck/01_%E5%88%97%E3%81%AE%E4%B8%80%E8%A6%A7.png) | 01-1-1 | 列名・日本語名・型・欠損・値の種類の数 |
-| [`02_数値列の分布と購入率.png`](datacheck/02_%E6%95%B0%E5%80%A4%E5%88%97%E3%81%AE%E5%88%86%E5%B8%83%E3%81%A8%E8%B3%BC%E5%85%A5%E7%8E%87.png) | 01-1-3 | 数値7列の件数(Yes/No 積み上げ)と、値ごとの購入率 |
-| [`03_カテゴリ列の件数と購入率.png`](datacheck/03_%E3%82%AB%E3%83%86%E3%82%B4%E3%83%AA%E5%88%97%E3%81%AE%E4%BB%B6%E6%95%B0%E3%81%A8%E8%B3%BC%E5%85%A5%E7%8E%87.png) | 01-1-4 | カテゴリ6列の件数と、値ごとの購入率 |
-| [`04_trainとtestの分布比較.png`](datacheck/04_train%E3%81%A8test%E3%81%AE%E5%88%86%E5%B8%83%E6%AF%94%E8%BC%83.png) | 01-1-8 | train と test の分布の比較(全13列でほぼ一致) |
-| [`05_相関ヒートマップ.png`](datacheck/05_%E7%9B%B8%E9%96%A2%E3%83%92%E3%83%BC%E3%83%88%E3%83%9E%E3%83%83%E3%83%97.png) | 01-2-1 | Spearman 相関(数値列 + 目的変数)と Cramér's V(全列) |
-| [`06_充電環境のクラスタ.png`](datacheck/06_%E5%85%85%E9%9B%BB%E7%92%B0%E5%A2%83%E3%81%AE%E3%82%AF%E3%83%A9%E3%82%B9%E3%82%BF.png) | 01-2-2 | 関係の強い列の組(スタンド数・居住地・自宅充電・航続距離への不安) |
-| [`07_自宅充電と自宅スタンド数の交互作用.png`](datacheck/07_%E8%87%AA%E5%AE%85%E5%85%85%E9%9B%BB%E3%81%A8%E8%87%AA%E5%AE%85%E3%82%B9%E3%82%BF%E3%83%B3%E3%83%89%E6%95%B0%E3%81%AE%E4%BA%A4%E4%BA%92%E4%BD%9C%E7%94%A8.png) | 01-2-2 | 自宅充電の可否ごとの、スタンド数と購入の log-odds |
-| [`08_補助金ありの割合.png`](datacheck/08_%E8%A3%9C%E5%8A%A9%E9%87%91%E3%81%82%E3%82%8A%E3%81%AE%E5%89%B2%E5%90%88.png) | 01-2-3 | 各説明変数の値ごとの「補助金ありの割合」 |
-| [`09_補助金の効き方.png`](datacheck/09_%E8%A3%9C%E5%8A%A9%E9%87%91%E3%81%AE%E5%8A%B9%E3%81%8D%E6%96%B9.png) | 01-2-3 | 補助金あり/なし別の購入率と、補助金の効果(log-odds 差) |
-| [`10_収入と年齢・環境意識の組み合わせ.png`](datacheck/10_%E5%8F%8E%E5%85%A5%E3%81%A8%E5%B9%B4%E9%BD%A2%E3%83%BB%E7%92%B0%E5%A2%83%E6%84%8F%E8%AD%98%E3%81%AE%E7%B5%84%E3%81%BF%E5%90%88%E3%82%8F%E3%81%9B.png) | 01-2-4 | 収入の5分位ごとの log-odds(年齢帯・環境意識レベル別) |
-
-**主な情報**: train 668,665行 / test 286,571行、欠損なし、購入率 17.5%。
-`Environmental_Concern_Level` の効きが圧倒的(レベル1で約1% → レベル5で約52%)。
-**年収は 13,214 種類の値**を持ち、木の既定ビン数(255)では値ごとの違いが潰れる
-→ 後の厳密値 Target Encoding とビン数引き上げにつながる最重要の所見。
-
----
-## ② Baseline(ベースライン:基準となるモデル)
-
-特徴量を作らず元の列だけで学習し、以降の改善を測る基準のスコアを作る工程。CV の分け方もここで全モデル共通に固定する。
-
-```bash
-uv run src/02_baseline_lgbm.py
-uv run src/02_baseline_xgb.py
-uv run src/02_baseline_catboost.py
-```
-
-**数値列のみ(7列)** と、**数値列 + カテゴリ列(13列)** の2通りで学習する
-(カテゴリ列はエンコードせず、各ライブラリのネイティブなカテゴリ対応に渡す)。
-CV は全モデル共通で `StratifiedKFold(n_splits=5, shuffle=True, random_state=42)`。
-**この分割を全モデルで揃えることが、後のアンサンブルと DeLong 検定の前提になる。**
-
-| モデル | OOF AUC<br>数値列のみ(7列) | OOF AUC<br>数値列 + カテゴリ列(13列) | Public LB<br>(13列) | Private LB<br>(13列) | Private の順位(上位) |
-|---|---|---|---|---|---|
-| LightGBM | 0.88380 | 0.94123 | 0.94093 | 0.94040 | 2985〜2990位相当(83.5〜83.6%) |
-| XGBoost | 0.88362 | 0.94124 | 0.94152 | 0.94092 | 2533〜2550位相当(70.9〜71.3%) |
-| CatBoost | 0.88398 | 0.94156 | 0.94170 | 0.94106 | 2292〜2309位相当(64.1〜64.6%) |
-
-**カテゴリ列を加えるだけで、3モデルとも約 +0.057。** `Subsidy_Available` と `Range_Anxiety_Level` は
-数値列より購入率の差がはるかに大きく、落とすとこの情報をまるごと失う。以降は13列を出発点にする。
-
-> 順位は最終の Private LB(3,575チーム)で、そのスコアが何位に相当するかを示したもの。同点は提出時刻の順に並ぶため、同点帯の幅で示す。
----
-## ③ Feature Engineering(特徴量エンジニアリング)
-
-元の列から、モデルが学びやすい形の新しい列(特徴量)を作る工程。ここでは作り方を関数として定義するだけで、実行はしない。
-
-> **RealMLP について**: RealMLP は数値を埋め込みに変えて学ぶニューラルネットワーク。GBDT と予測の間違え方が違うため、アンサンブルの多様性を補う目的で③から導入。前処理と設定が複雑で、ベースラインには含めない。
-
-| モデル | ③ Feature Engineering の関数 |
-|---|---|
-| LightGBM | `src/03_feature_engineering_lgbm.py` |
-| XGBoost | `src/03_feature_engineering_xgb.py` |
-| CatBoost | `src/03_feature_engineering_catboost.py` |
-| RealMLP | `src/03_feature_engineering_realmlp.py` |
-| (横断) | `src/03_feature_engineering_AllCatalog.py`(全モデルの関数の採否表と、不採用の関数の記録) |
-
-**精度が改善したもの**(改善幅は OOF AUC の差)
-
-| 施策 | 内容 | 改善幅 | 対象モデル |
-|---|---|---|---|
-| 厳密値 Target Encoding | 年収などを丸めず、値そのものをキーにして購入率を渡す | **+0.00345**(LightGBM)/ +0.00108(CatBoost) | GBDT 3種 |
-| catify | 値の種類が少ない数値列(年齢・スタンド数など)をカテゴリとして渡す | **+0.00170** | CatBoost のみ |
-| Out-of-Fold Target Encoding | 学習行の Target Encoding を、自分を含まない行から計算する(リーク対策) | +0.00108(XGBoost) | GBDT 3種 |
-| Triple TE + Smooth Keys + digit + ビン数 1024 | 平滑化3種の Target Encoding、年収を粗く丸めたキー、桁ごとの列、ビン数の引き上げ | +0.00052 / +0.00048 / **+0.00096** | LightGBM / XGBoost / CatBoost |
-| Count Encoding | 値の出現回数を1列で渡す | +0.00083 / +0.00049 | LightGBM / XGBoost |
-| 年収の Target Encoding を train だけで作る(`--te-income`) | 元データの購入率と並べて、train での年収ごとの購入率を渡す | 単体 **+0.000128**(z=+6.84)/ アンサンブル +0.000018(z=+3.06) | RealMLP |
-| 元データでの年収ごとの購入率(1列) | 外部データ(元データ)から作った年収ごとの購入率 | アンサンブル +0.000022(z=+3.86)。採用基準未満だが CV 最高のため採用 | RealMLP |
-| 交互作用1組「自宅充電の可否 × 自宅スタンド数」 | EDA で見つけた唯一の交互作用を組み合わせた特徴量 | +0.000012 / +0.000028。採用基準未満だが CV 最高のため採用 | LightGBM / RealMLP |
-
-**採用したがスコアは変わらないもの**: 列の整理(他の列と同じ情報しか持たない列や、値の種類が少ない数値列の余分なエンコーディングを作らない)。どの列を作るかは各モデルの `te_plan()` にまとめてある。
-
-**精度が改善しなかったもの**: 四則演算、交互作用の Target Encoding(2〜13列。上の1組を除く)、全列の値の組み合わせをキーにした Target Encoding、元データの行の追加、補助金との組み合わせ、元データの年収ごとの購入率を GBDT に足す、Target Encoding を内側の乱数を変えて数回作り平均する。
-各施策の詳細(なぜ試したか / 期待した効果 / 結果の考察)は `docs/fe_results_*.md` を参照。
-
-> `src/03_feature_engineering_<model>.py` は**関数の定義のみ**、`src/04_model_train_and_evaluate_<model>.py` が**実行**という分担。
-> この分離により、同じ関数を別の検証スクリプトからも再利用できる。
----
-## ④ Model Train and Evaluate(モデルの学習と評価)
-
-③の関数で特徴量を作り、交差検証(CV)でモデルを学習・評価して、予測と提出ファイルを保存する工程。
-
-| モデル | ④ 学習・評価の実行スクリプト |
-|---|---|
-| LightGBM | `src/04_model_train_and_evaluate_lgbm.py` |
-| XGBoost | `src/04_model_train_and_evaluate_xgb.py` |
-| CatBoost | `src/04_model_train_and_evaluate_catboost.py` |
-| RealMLP | `src/04_model_train_and_evaluate_realmlp.py` |
-
-### 現行ベストの再現コマンド
-
-```bash
-uv run src/04_model_train_and_evaluate_lgbm.py \
-  --max_bin 1024 --feature_fraction 0.3 --max_depth 5 \
-  --folds 5 --learning_rate 0.03 --n_estimators 8000 --early_stopping 200 --n_jobs 7 --interaction income --save --tag lgbm
-
-uv run src/04_model_train_and_evaluate_xgb.py --max-bin 1024 \
-  --set-param colsample_bytree=0.3 --set-param max_depth=5 \
-  --folds 5 --learning-rate 0.03 --n-estimators 8000 --early-stopping 200 --n-jobs 7 --save --out-suffix ""
-
-uv run src/04_model_train_and_evaluate_catboost.py \
-  --folds 5 --iters 1000 --lr 0.06 --fast --border 64 --hc-border 1024 --threads 7 --save
-
-uv run src/04_model_train_and_evaluate_realmlp.py --folds 5 --threads 7 --combo-home --te-income --tag realmlp   # epochs は 2 から変えないこと
-```
-
-| モデル | OOF AUC | 備考 |
-|---|---|---|
-| **LightGBM** | **0.94620** | アンサンブル採用。年収系の列とそれ以外の列を、同じ木の枝で組み合わせない(交互作用の制約) |
-| **XGBoost** | **0.94609** | アンサンブル採用 |
-| **RealMLP** | **0.94603** | アンサンブル採用。GBDTとの相関が低く多様性を供給 |
-| CatBoost | 0.94592 | 現在アンサンブルの重みは 0 |
-
-> **重いジョブは1つずつ実行すること**(8コア環境)。CatBoost と RealMLP を並列で走らせると
-> CPU を取り合って完走しない(実際に CatBoost が 0.33 コアまで押し出された)。
-
-### 使っている特徴量の列名を確認する
-
-`--dump-features` を付けると、**fold 1 の学習行列を組み上げた直後に列名を `docs/features_<tag>.json` へ書いて終了する**(学習しない)。本番と同じコードパスを通るので列の取りこぼしがない。`notebooks/03_feature_engineering.ipynb` は、ノートブックで組み上げた列がこの JSON と一致するかを確かめる。
-
-```bash
-uv run src/04_model_train_and_evaluate_lgbm.py --dump-features --tag lgbm
-uv run src/04_model_train_and_evaluate_xgb.py --dump-features --out-suffix ""
-uv run src/04_model_train_and_evaluate_catboost.py --fast --dump-features --tag catboost
-uv run src/04_model_train_and_evaluate_realmlp.py --combo-home --te-income --dump-features --tag realmlp
-```
-
-**Feature Engineering を変えたら再生成すること。** JSON は生成物だが `data/` を含めていないためクローン先では作り直せない。ノートブックの表示元になるのでリポジトリに含めている。
-
-### Feature Importance(特徴量の重要度)を確認する
-
-モデルが予測を作るときに、どの列をどれだけ使ったかを確かめる。本番と同じ特徴量・パラメータで fold 1 だけを学習し直し(本番の fold 1 と同じモデルになる)、重要度(gain の割合)の上位の列を print する。**本番の予測・提出ファイルには書き込まない。**
-
-```bash
-uv run src/feature_importance.py                  # LightGBM・XGBoost・CatBoost の上位 10 列(約 7 分)
-uv run src/feature_importance.py lgbm --top 20    # モデルと表示する列数を指定
-```
-
-図と、読み取れること(重要度は相関ではない)は `notebooks/04_model_train_and_evaluate.ipynb` の 04-7 章。RealMLP は木のモデルのような重要度を持たないので対象外。
-
----
-## ⑤ Hyperparameter Tuning(ハイパーパラメータ調整)
-
-学習率や木の深さなど、学習前に決めておく設定値(ハイパーパラメータ)を変えて、より良い組み合わせを探す工程。
-
-**列サブサンプリングで精度が改善した**(2026-09-20、外部カーネル調査で見つけた見落とし)。
-92列の Target Encoding 特徴量に対し全列を使うと、どの木も最強列(年収の Target Encoding)を根に選ぶため木が似通う。
-
-| モデル | 設定 | 効果 |
-|---|---|---|
-| LightGBM | `feature_fraction=0.3, max_depth=5` | **+0.000223**(z=+10.4) |
-| XGBoost | `colsample_bytree=0.3, max_depth=5` | **+0.000163**(z=+8.5) |
-| CatBoost | — | 列サンプリングは**有害**(-0.00015)。対称木のため木全体が一斉に弱くなる |
-
-**木の本数を増やした理由**: 列を間引いて木を弱くすると、学習しきるまでに要る木の本数が増える。本数を据え置くと学習が途中で止まり、本来は精度を上げる施策でも、測った AUC には改善が表れない。そのため、early stopping で本数を決め直した。
-
-**交互作用の制約で精度が改善した**(2026-09-29、Feature Importance から立てた仮説)。重要度の 7〜9 割を補助金と環境意識が占めるので、年収系の列(年収・その Smooth Keys・digit・Count・Target Encoding)とそれ以外の列を、同じ木の枝で組み合わせないようにした。年収の細部が別の枝で学ばれる。
-
-| モデル | 単体の差 | アンサンブルの差 | 判定 |
-|---|---|---|---|
-| LightGBM | **+0.000091**(z=+4.21) | **+0.000047**(z=+6.50)。5 fold すべてで改善 | **採用** |
-| XGBoost | +0.000089(z=+4.20) | LightGBM に入れた構成への上積みは +0.000004(z=+0.52)。提出しても Public・Private とも同点(0.94644 / 0.94543) | **不採用**(LightGBM と予測が似通い、多様性が減る) |
-
-### 探索のフレーム
-
-```bash
-uv run src/05_hyperparameter_tuning.py lgbm --estimate          # 試行一覧と所要時間の見積もりだけ表示
-uv run src/05_hyperparameter_tuning.py lgbm                     # 実行(1本ずつ順番に)
-uv run src/05_hyperparameter_tuning.py lgbm --only num_leaves   # 特定の軸だけ
-uv run src/05_hyperparameter_tuning.py --report                 # これまでの結果を表示
-```
-
-`src/05_hyperparameter_tuning.py` は**学習コードを持たない**。既存の `04_model_train_and_evaluate_<model>.py` を引数違いで
-呼ぶだけにして、収束設定や Feature Engineering の構成が本番とズレないようにしている。解説は
-`notebooks/05_hyperparameter_tuning.ipynb`。
-
-**本番のパラメータの正本は `src/05_hyperparameter_tuning.py` の `FIXED`**(本番コマンドのうち探索しない固定部分)。
-05 の結果が 04 に自動で反映される仕組みはなく、`notebooks/04_model_train_and_evaluate.ipynb` は確定した値を書き写したうえで、
-04-6 章で `FIXED` と同じかを照合している(ずれていれば止まる)。④の再現コマンドも `FIXED` と同じ値にそろえること。
-
-**探索の結果: 18 試行と LightGBM の深さ 2 本のすべてが誤差か悪化で、採用ゼロ。**
-
-| モデル | 試した軸 | 結果 |
-|---|---|---|
-| LightGBM | `num_leaves`(15 / 63 / 127)、深さ(4、6 + 葉 63) | すべて誤差。`max_depth=5`(葉は最大 32)が先に効いている |
-| XGBoost | `max_depth`、`colsample_bytree`、`min_child_weight`、`subsample` | 深さ 6・7 は有意に悪化、ほかは誤差 |
-| CatBoost | `depth`、`one_hot_max_size` | 深さは既定の 6 が最適、`one_hot_max_size` は無反応 |
----
-## ⑥ Ensemble(アンサンブル)
-
-複数のモデルの予測を組み合わせ、1つのモデルより安定して高いスコアを出す工程。どのモデルをどの比率で混ぜるかを決める。
-
-```bash
-uv run src/06_ensemble_hill_climbing.py
-```
-
-`oof/oof_<name>.npy` と `oof/pred_<name>.npy` の組をすべて候補として読み込み、rank 正規化した予測を
-hill climbing(貪欲法)で足し合わせる。選ばれた回数がそのまま重みになる。
-
-- **hill climbing とは**: 今のアンサンブルに足すと OOF AUC が最も上がる候補を1つずつ選び(同じモデルを何度選んでもよい)、どれを足しても上がらなくなったら止める方法
-- **採用した理由**: 重みの組み合わせを総当たりで試すより計算がはるかに速く、単体では弱くても他と違う予測をするモデルを自然に拾えるため
-- **ほかの混ぜ方との比較**: CatBoost を 0.05〜0.50 の重みで加える、hill climbing に派生モデルも選ばせる、seed 違いのモデルの平均を足す、を試したが、3 モデルを 1/3 ずつ混ぜた構成との差はいずれも誤差(z < 3)か悪化で、提出しても Public・Private は上がらなかった
-
-**採用モデル間の順位相関**も併せて出力する。相関が高いほど同質で、足しても伸びない
-(弱くても非相関なら勝てる)。未採用の候補のうち最も非相関なものも提示するので、
-多様性が枯渇したときにどれを足せばよいかが分かる。
-
-**最終提出**: LightGBM 1/3 / XGBoost 1/3 / RealMLP 1/3 の順位平均(CatBoost は重み 0)。CV 0.946310 / Private 0.94543。各提出のスコアは「[提出ごとのスコアの推移](#提出ごとのスコアの推移)」。
-
-### hill climbing の重みの検証(DeLong 検定)
-
-hill climbing は OOF 上の偶然の当たりも拾うため、重みは ⑦ の DeLong 検定で有意性を確かめてから採用した。
-有意でない構成(CV +0.000009、z=+1.57)を提出すると、Public -0.00002 / Private -0.00001 で下がった。
-
-### 提出
-
-kaggle CLI はプロジェクトの依存に含めていないため、`uvx` で一時的に実行する(認証ファイル kaggle.json が必要)。
-
-```bash
-uvx kaggle competitions submit -c playground-series-s6e9 -f submit/submission_hillclimb.csv -m "<説明>"
-```
-
-`06_ensemble_hill_climbing.py` は実行のたびに `submit/submission_hillclimb.csv` を上書きし、`oof/` の予測をすべて候補にする。そのため、不採用の予測は `experiments_rejected/` に移して候補から外している。
-
-## ⑦ Paired DeLong Test(対応のある DeLong 検定)
-
-2つの予測の AUC の差が偶然か本物かを統計的に判定し、変更を採用するかを決める工程。学習はせず、保存済みの予測を読むだけ。
-
-> **DeLong 検定とは**: DeLong 検定は、同じデータに対する2つの予測の AUC の差が、偶然の揺れで説明できる程度かを調べる統計的な検定。差が偶然でないと言えるときだけ変更を採用するために行う。
-
-```bash
-uv run src/07_compare_predictions.py lgbm lgbm_shallow      # 2つを比較
-uv run src/07_compare_predictions.py --all realmlp          # 全候補と比較
-```
-
-全モデルが fold 分割を `random_state=42` で固定して
-いるため、2つの予測は**同じ行・同じ分割**で作られている。DeLong 検定はこの対応を使って差の標準誤差を
-直接求めるので、**両者に共通のノイズが差し引きで消え**、AUC を別々に眺めるより桁違いに細かく差を
-見分けられる。
-
-**算出式**: 正例の予測を $X_1,\dots,X_m$、負例の予測を $Y_1,\dots,Y_n$ とする。
-
-```math
-\hat\theta=\frac{1}{mn}\sum_{i=1}^{m}\sum_{j=1}^{n}\psi(X_i,Y_j),\qquad \psi(x,y)=\begin{cases}1 & x \gt y \\ 1/2 & x = y \\ 0 & x \lt y\end{cases}
-```
-
-各行が AUC にどれだけ寄与したか(構造成分)を、モデルごとに求める。
-
-```math
-V_{10}(X_i)=\frac{1}{n}\sum_{j=1}^{n}\psi(X_i,Y_j),\qquad V_{01}(Y_j)=\frac{1}{m}\sum_{i=1}^{m}\psi(X_i,Y_j)
-```
-
-2 つのモデル A・B の構造成分の共分散 $S_{10}$・$S_{01}$(2×2 の行列)から、AUC の共分散と差の z 値を出す。
-
-```math
-S=\frac{S_{10}}{m}+\frac{S_{01}}{n},\qquad z=\frac{\hat\theta_B-\hat\theta_A}{\sqrt{S_{AA}+S_{BB}-2S_{AB}}}
-```
-
-同じ行で作った予測は $S_{AB}$(共分散)が大きいので、差の標準誤差が小さくなる。実装は `src/07_compare_predictions.py` の `delong_cov` / `paired_test`。
-
-| | 従来 | DeLong |
-|---|---|---|
-| ノイズ床(SE) | 0.00015 | **0.00003 前後** |
-| 採否基準 | 差分 ≥ +0.0002 | 差分 ≥ +0.00008 **かつ** z ≥ 3 |
-
-導入の効果は早速出た。XGBoost の列サブサンプリング(+0.000163)は**従来基準なら捨てていた**数字だが、
-z=+8.48 で誤差でないことが確定した。
-
----
-
-## 提出ごとのスコアの推移
-
-| 提出 | CV | Public LB | Private LB | Private の順位(上位) |
-|---|---|---|---|---|
-| CatBoost 単体(ベースライン) | 0.94156 | 0.94170 | 0.94106 | 2292〜2309位相当(64.1〜64.6%) |
-| Feature Engineering + 収束確認 | 0.94555 | 0.94576 | 0.94479 | 1378〜1380位相当(38.5〜38.6%) |
-| Triple Target Encoding + digit | 0.94604 | 0.94622 | 0.94529 | 939〜969位相当(26.3〜27.1%) |
-| 列サブサンプリング + 3モデル | 0.946234 | **0.94645** | 0.94539 | 611〜669位相当(17.1〜18.7%) |
-| 列の整理 + 交互作用 + RealMLP の年収 Target Encoding | 0.946264 | 0.94642 | 0.94540 | 572〜611位相当(16.0〜17.1%) |
-| **上 + LightGBM の交互作用の制約(最終提出)** | **0.946310** | **0.94644** | **0.94543** | **376位(10.5%。最終順位)** |
-
-## この取り組みで精度の改善につながったこと
-
-1. **厳密値 Target Encoding**(+0.003)— 前コンペの教訓がそのまま再現した最大の要因
-2. **収束の確認**(+0.0008)— Feature Engineering で特徴量を13→39列に増やしたのに木の本数がデフォルト100のままだった
-3. **列サブサンプリング**(+0.0002)— 外部調査で見つけた見落とし。引数を足すだけ
-4. **異種モデル(RealMLP)の追加** — GBDT同士は相関0.99で同質化しており、多様性の供給源になった
-5. **paired DeLong 検定** — 従来なら誤差として捨てていた改善を拾えるようになった
-6. **交互作用の制約**(+0.000047)— Feature Importance で「補助金と環境意識が大半を占める」と分かり、年収の細部を別の枝で学ばせた
-
-**精度が改善しなかったこと**: 四則演算・交互作用など「人間が意味を考えて作った特徴量」は全滅だった。
-合成データの生成過程にそうした関係がなかったため。
 ## Claude Code の構成
 
 | 置き場所 | 内容 |
 |---|---|
 | [CLAUDE.md](CLAUDE.md) | このコンペ固有の事実・規約・採否基準、指揮官(ユーザー)の承認が必要な事項 |
 | `.claude/skills/tabular-workflow/` | 表形式データのコンペの進め方(工程 ①〜⑦ の完了条件、最終提出の選び方)。コンペに依存しない |
-| `.claude/skills/experiment-gate/` | 実験1本の手順(バックアップ → スクリーニング → フル CV → DeLong 検定 → 後処理 → 記録)。コンペに依存しない |
-| `.claude/agents/` | 担当リーダー(サブエージェント)の管轄と、モデル固有の注意 |
+| `.claude/skills/experiment-gate/` | 実験1本の手順(バックアップ → スクリーニング → フル CV → DeLong 検定 → 後処理 → 記録)。 |
+| `.claude/agents/` | 各モデルごとの担当リーダー(サブエージェント)の管轄と、モデル固有の注意 |
 
 | エージェント | 役割 | 記録 |
 |---|---|---|
-| `lgbm-lead` / `xgb-lead` / `catboost-lead` / `realmlp-lead` | 各モデルの CV AUC 向上を**競う** | `docs/fe_results_<model>.md` |
-| `fe-lead` | Feature Engineering の統括。**競争せず**、モデル間の取りこぼしを横展開する | `docs/fe_results_all.md` |
-| `research-lead` | 情報収集。**競争せず**、Kaggle の Code / Discussion から新しい手を持ち込む | (ローカル管理) |
+| `lgbm-lead` / `xgb-lead` / `catboost-lead` / `realmlp-lead` | 各モデルの CV AUC 向上を競う | `docs/fe_results_<model>.md` |
+| `fe-lead` | Feature Engineering の統括。競争せず、モデル間の取りこぼしを横展開する | `docs/fe_results_all.md` |
+| `research-lead` | 情報収集。競争せず、Kaggle の Code / Discussion から新しい手を持ち込む | (ローカル管理) |
 
 - モデル担当の審査は単体 AUC だけでなく、**他モデルとの非相関性**(アンサンブルへの貢献度)も見る
 - 他モデルのファイルは編集しない。Kaggle への提出と push は指揮官の承認後のみ
@@ -516,3 +305,51 @@ uvx kaggle datasets download -d itzzomkar/ev-adoption-behavior-and-range-anxiety
   **ないとエラーにならずにこの列が抜け(39 列 → 38 列)、スコアが本番と一致しない**ので、必ず取得すること。
 - 取得後は「[現行ベストの再現コマンド](#現行ベストの再現コマンド)」で 4 モデルを学習(約 75 分)→ `uv run src/06_ensemble_hill_climbing.py` でアンサンブル。
 - ノートブックは、カーネルに `.venv` の Python を選べば動く。
+
+### 現行ベストの再現コマンド
+
+4モデルを1つずつ学習し(合計約75分。8コアで並べて走らせると CPU を取り合って完走しない)、アンサンブルする。
+
+```bash
+uv run src/04_model_train_and_evaluate_lgbm.py \
+  --max_bin 1024 --feature_fraction 0.3 --max_depth 5 \
+  --folds 5 --learning_rate 0.03 --n_estimators 8000 --early_stopping 200 --n_jobs 7 --interaction income --save --tag lgbm
+
+uv run src/04_model_train_and_evaluate_xgb.py --max-bin 1024 \
+  --set-param colsample_bytree=0.3 --set-param max_depth=5 \
+  --folds 5 --learning-rate 0.03 --n-estimators 8000 --early-stopping 200 --n-jobs 7 --save --out-suffix ""
+
+uv run src/04_model_train_and_evaluate_catboost.py \
+  --folds 5 --iters 1000 --lr 0.06 --fast --border 64 --hc-border 1024 --threads 7 --save
+
+uv run src/04_model_train_and_evaluate_realmlp.py --folds 5 --threads 7 --combo-home --te-income --tag realmlp   # epochs は 2 から変えないこと
+
+uv run src/06_ensemble_hill_climbing.py
+```
+
+<details>
+<summary>その他のコマンド(EDA・ベースライン・列名の確認・Feature Importance・探索・DeLong 検定)</summary>
+
+```bash
+uv run src/01_eda.py                                   # ① 図を datacheck/ に保存
+uv run src/02_baseline_lgbm.py                         # ② ベースライン(xgb / catboost も同様)
+
+# 使っている特徴量の列名を docs/features_<tag>.json に書き出す(学習しない。Feature Engineering を変えたら再生成する)
+uv run src/04_model_train_and_evaluate_lgbm.py --dump-features --tag lgbm
+uv run src/04_model_train_and_evaluate_xgb.py --dump-features --out-suffix ""
+uv run src/04_model_train_and_evaluate_catboost.py --fast --dump-features --tag catboost
+uv run src/04_model_train_and_evaluate_realmlp.py --combo-home --te-income --dump-features --tag realmlp
+
+uv run src/feature_importance.py                       # Feature Importance の上位の列(約7分。本番の成果物には書き込まない)
+
+uv run src/05_hyperparameter_tuning.py lgbm --estimate # ⑤ 試行一覧と所要時間の見積もりだけ表示
+uv run src/05_hyperparameter_tuning.py --report        # ⑤ これまでの結果を表示
+
+uv run src/07_compare_predictions.py lgbm lgbm_shallow # ⑦ 2つの予測を比較
+uv run src/07_compare_predictions.py --all realmlp     # ⑦ 全候補と比較
+
+# 提出(kaggle CLI はプロジェクトの依存に含めないため uvx で一時的に実行。認証ファイル kaggle.json が必要)
+uvx kaggle competitions submit -c playground-series-s6e9 -f submit/submission_hillclimb.csv -m "<説明>"
+```
+
+</details>
